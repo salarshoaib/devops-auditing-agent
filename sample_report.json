@@ -1,0 +1,145 @@
+{
+  "repository": "https://github.com/salarshoaib/devops-audit-fixture",
+  "violations": [
+    {
+      "rule_id": "SEC-001",
+      "category": "security",
+      "severity": "critical",
+      "file": "app.py",
+      "line": 3,
+      "description": "Hardcoded AWS credential in source code",
+      "evidence": "app.py line 3 contains `AWS_ACCESS_KEY_ID = \"[REDACTED]\"`",
+      "recommendation": "Remove hardcoded credentials and use environment variables or a secrets manager."
+    },
+    {
+      "rule_id": "SEC-002",
+      "category": "security",
+      "severity": "critical",
+      "file": ".env",
+      "line": 1,
+      "description": "Committed environment file containing database and stripe secrets",
+      "evidence": ".env line 1 contains `DATABASE_URL=[REDACTED]`",
+      "recommendation": "Remove .env from version control and add it to .gitignore."
+    },
+    {
+      "rule_id": "SEC-004",
+      "category": "security",
+      "severity": "critical",
+      "file": ".github/workflows/ci.yml",
+      "line": 4,
+      "description": "Dangerous pull_request_target trigger checking out untrusted PR head commit",
+      "evidence": ".github/workflows/ci.yml lines 4-15 use pull_request_target with ref ${{ github.event.pull_request.head.sha }}",
+      "recommendation": "Change workflow trigger to pull_request or avoid checking out untrusted PR head code with elevated privileges."
+    },
+    {
+      "rule_id": "BLD-002",
+      "category": "build_release",
+      "severity": "high",
+      "file": ".github/workflows/ci.yml",
+      "line": 19,
+      "description": "Risky deployment automation triggered unconditionally on CI events",
+      "evidence": ".github/workflows/ci.yml lines 19-22 execute deployment script ./deploy.sh with secrets on CI runs",
+      "recommendation": "Separate deployment workflows from PR/CI validation and require manual approval gates or protected environments."
+    },
+    {
+      "rule_id": "CFG-001",
+      "category": "configuration",
+      "severity": "high",
+      "file": ".vscode/settings.json",
+      "line": 2,
+      "description": "Machine-specific absolute path hardcoded in project configuration files",
+      "evidence": ".vscode/settings.json line 2 contains `C:\\\\Users\\\\alice\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe`",
+      "recommendation": "Remove absolute paths and use relative or environment-agnostic settings."
+    },
+    {
+      "rule_id": "CFG-001",
+      "category": "configuration",
+      "severity": "high",
+      "file": "app.py",
+      "line": 9,
+      "description": "Machine-specific absolute path hardcoded in source file",
+      "evidence": "app.py line 9 contains `DATA_DIR = r\"C:\\Users\\alice\\billing\\data\"`",
+      "recommendation": "Use relative paths or environment variables instead of hardcoded user absolute paths."
+    },
+    {
+      "rule_id": "CI-003",
+      "category": "ci_cd",
+      "severity": "high",
+      "file": ".github/workflows/ci.yml",
+      "line": 17,
+      "description": "CI build step hidden or masked by success bypasses",
+      "evidence": ".github/workflows/ci.yml lines 17-18 use `run: pytest || true` and `continue-on-error: true`",
+      "recommendation": "Remove continue-on-error and failure masking so test failures correctly fail the CI build."
+    },
+    {
+      "rule_id": "DEP-001",
+      "category": "dependency_management",
+      "severity": "high",
+      "file": "requirements.txt",
+      "line": 1,
+      "description": "Missing lockfile for project dependencies",
+      "evidence": "requirements.txt declares dependencies but no lockfile exists in the repository (at requirements.txt:1)",
+      "recommendation": "Generate and commit a dependency lockfile."
+    },
+    {
+      "rule_id": "SEC-003",
+      "category": "security",
+      "severity": "high",
+      "file": ".github/workflows/ci.yml",
+      "line": 7,
+      "description": "Unsafe workflow permissions granting write-all across the repository",
+      "evidence": ".github/workflows/ci.yml line 7 sets `permissions: write-all`",
+      "recommendation": "Apply least privilege workflow permissions (e.g., contents: read)."
+    },
+    {
+      "rule_id": "SEC-005",
+      "category": "security",
+      "severity": "high",
+      "file": "deploy.sh",
+      "line": 3,
+      "description": "Secret passed to untrusted command or printed in execution logs",
+      "evidence": "deploy.sh line 3 echoes `DEPLOY_TOKEN`: `echo \"Deploying with token $DEPLOY_TOKEN\"`",
+      "recommendation": "Avoid printing sensitive secrets in shell scripts."
+    },
+    {
+      "rule_id": "TST-001",
+      "category": "testing",
+      "severity": "high",
+      "file": null,
+      "line": null,
+      "description": "No automated test suite present in the repository",
+      "evidence": "No test files or test directories exist in the repository",
+      "recommendation": "Implement unit and integration tests."
+    },
+    {
+      "rule_id": "HYG-003",
+      "category": "repository_hygiene",
+      "severity": "medium",
+      "file": "build/app.log",
+      "line": 1,
+      "description": "Generated or temporary log files tracked in version control",
+      "evidence": "build/app.log is committed to the repository (at build/app.log:1)",
+      "recommendation": "Add build/ and log files to .gitignore and remove them from version control."
+    },
+    {
+      "rule_id": "HYG-004",
+      "category": "repository_hygiene",
+      "severity": "medium",
+      "file": ".vscode/settings.json",
+      "line": 1,
+      "description": "Editor directory and settings committed to version control",
+      "evidence": ".vscode/settings.json is tracked in version control (at .vscode/settings.json:1)",
+      "recommendation": "Add .vscode to .gitignore."
+    },
+    {
+      "rule_id": "SEC-006",
+      "category": "security",
+      "severity": "low",
+      "file": ".github/workflows/ci.yml",
+      "line": 13,
+      "description": "Third-party GitHub Action pinned to a mutable tag or branch reference",
+      "evidence": ".github/workflows/ci.yml line 13 uses mutable tag `actions/checkout@master`",
+      "recommendation": "Pin actions to an immutable full-length commit SHA."
+    }
+  ]
+}

@@ -1,0 +1,351 @@
+﻿# DevOps Repository Auditing Agent
+
+An AI agent that clones a public GitHub repository, investigates it with its own
+LLM-driven tool loop, and writes an evidence-backed JSON report of DevOps
+best-practice violations.
+
+Built for **Assignment 2 - AI Agent for DevOps Repository Auditing**. The agent
+loop, tool dispatch, and control flow are implemented directly in Python; no
+agent framework (LangChain, LangGraph, n8n, ...) is used, only a provider SDK.
+
+---
+
+## What it does
+
+```bash
+python agent.py --repo https://github.com/owner/project --output report.json
+```
+
+1. Validates the URL and makes a **shallow, read-only clone** in a temporary directory.
+2. Starts from a cheap repository overview (file count, top-level tree, marker files, workflows).
+3. Repeatedly asks the LLM what to inspect next and executes the tool it selects
+   (`list_files`, `read_file`, `search_code`, `git_log`), feeding results back.
+4. Interprets the evidence, drops duplicate/unsupported findings, redacts secrets,
+   normalises severity, and validates every field.
+5. Writes valid JSON - including `"violations": []` for a healthy repository - and
+   cleans up the clone.
+
+The model decides the investigation path. There is no fixed scanner pass and no
+hard-coded repository knowledge; the rule catalog is vocabulary, not a checklist.
+
+## Highlights
+
+- **Genuine agent loop** - observe -> reason -> select tool -> execute -> interpret,
+  with follow-up calls and a step budget.
+- **Provider agnostic** - any OpenAI-compatible endpoint (OpenAI, Gemini, Groq,
+  OpenRouter, Ollama) that supports tool calling.
+- **Precision first** - equivalence rules (no `requirements.txt` is fine when
+  `pyproject.toml` declares dependencies), dedupe by root cause, path validation
+  against the clone, and no claims about remote branch protection.
+- **Never leaks secrets** - tool output fed to the model, trace files, and reports
+  all pass through a redactor. Evidence keeps the key name, never the value.
+- **Safe by design** - no repository code is executed; the clone is thrown away.
+- **77 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
+
+## Architecture
+
+```text
+agent.py                 CLI: argument parsing, .env, orchestration, exit codes
+  |
+  +-- repo.py            URL parsing, shallow read-only clone, path-safety guards
+  |
+  +-- agent_loop.py      THE AGENT: message history, tool selection, dispatch,
+  |                      step budget, forced finalisation, trace recording
+  |     |
+  |     +-- llm.py       OpenAI-compatible client, tool-call parsing,
+  |     |                thought-signature passthrough, retry/backoff
+  |     |
+  |     +-- tools.py     list_files / read_file / search_code / git_log
+  |     |                + submit_report schema, bounded outputs
+  |     |
+  |     +-- prompts.py   system prompt, nudges, finalisation prompt
+  |
+  +-- rules.py           rule catalog (ids, categories, severities, remediation)
+  +-- reporting.py       schema normalisation, dedupe, severity policy, JSON write
+  +-- secrets.py         credential redaction
+```
+
+The loop in `agent_loop.AuditorAgent.run`:
+
+```text
+overview --> [ LLM turn ] --tool_call--> execute --> append result --> repeat
+                 |                                   (max 8 calls per turn)
+                 +--submit_report--> normalise --> report.json
+                 +--text report----> normalise --> report.json
+                 +--no tool call---> nudge / repair prompt (max 2)
+                 +--budget reached--> forced submit_report with current evidence
+```
+
+## Requirements
+
+- Python 3.10+
+- `git` on `PATH`
+- An API key for an OpenAI-compatible model with function calling
+- Network access to GitHub and the LLM endpoint
+
+## Installation
+
+```bash
+git clone https://github.com/salarshoaib/devops-auditing-agent.git
+cd devops-auditing-agent
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+## Configuration
+
+Copy the template and fill in your credentials:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `LLM_API_KEY` | yes | - | API key for the OpenAI-compatible endpoint |
+| `LLM_MODEL` | yes | `gpt-4o-mini` | Model name, must support tool calling |
+| `LLM_BASE_URL` | no | OpenAI | Base URL of the compatible endpoint |
+| `MAX_STEPS` | no | `30` | Upper bound on LLM steps |
+| `LLM_TIMEOUT` | no | `120` | Per-request timeout in seconds |
+
+Example for Google Gemini's OpenAI-compatible endpoint:
+
+```dotenv
+LLM_API_KEY=your-key
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+LLM_MODEL=gemini-2.5-flash
+```
+
+Real environment variables take precedence over `.env`. `.env` is git-ignored;
+only `.env.example` is committed.
+
+## Usage
+
+```bash
+# required form
+python agent.py --repo https://github.com/owner/project --output report.json
+
+# SSH and owner/repo shorthand work too
+python agent.py --repo git@github.com:owner/project.git --output report.json
+python agent.py --repo owner/project --output report.json
+
+# optional diagnostics
+python agent.py --repo owner/project --output report.json --verbose --trace trace.json
+```
+
+| Flag | Description |
+| --- | --- |
+| `--repo` | Repository URL or `owner/repo` (required) |
+| `--output` | Report path (default `report.json`) |
+| `--max-steps` | Override `MAX_STEPS` |
+| `--model`, `--base-url` | Override `LLM_MODEL` / `LLM_BASE_URL` |
+| `--trace` | Write a JSON record of every tool call |
+| `-v/--verbose`, `-q/--quiet` | Verbosity of progress output |
+
+The command runs unattended - there are no prompts. Progress goes to stderr and a
+one-line summary to stdout.
+
+Exit codes: `0` report written, `1` fatal error (bad URL, auth failure, clone
+failure, unwritable output), `130` interrupted.
+
+## Output contract
+
+Every run writes valid JSON with exactly two top-level keys:
+
+```json
+{
+  "repository": "https://github.com/example/demo-project",
+  "violations": [
+    {
+      "rule_id": "SEC-001",
+      "category": "security",
+      "severity": "critical",
+      "file": "config.py",
+      "line": 17,
+      "description": "Hardcoded API credential",
+      "evidence": "config.py assigns a literal API key on line 17.",
+      "recommendation": "Load the key from an environment variable and rotate it."
+    }
+  ]
+}
+```
+
+Rules enforced by `reporting.py`:
+
+- all eight fields are always present; `file`/`line` are `null` when repository-wide;
+- `severity` is one of `critical`, `high`, `medium`, `low`;
+- `category` is one of the nine inspection areas;
+- unknown rule ids become `GEN-001`; unknown categories fall back to the catalog;
+- `file` is validated against the clone - a hallucinated path becomes `null` with a note;
+- duplicate root causes and unsupported entries are dropped, output is capped at 40;
+- secret-looking values are redacted everywhere.
+
+A real generated report is committed as [`sample_report.json`](sample_report.json)
+(produced by auditing <https://github.com/salarshoaib/devops-audit-fixture>).
+
+## Rule catalog
+
+| Rule | Category | Default severity | Finding |
+| --- | --- | --- | --- |
+| HYG-001 | repository_hygiene | high | No README or setup documentation |
+| HYG-002 | repository_hygiene | medium | Missing or unsuitable `.gitignore` |
+| HYG-003 | repository_hygiene | medium | Generated or temporary files tracked |
+| HYG-004 | repository_hygiene | medium | Editor/OS/dependency directories committed |
+| DEP-001 | dependency_management | high | Missing lockfile for a manifest |
+| DEP-002 | dependency_management | medium | Unpinned or unbounded dependency constraint |
+| DEP-003 | dependency_management | low | Inconsistent dependency declarations |
+| DEP-004 | dependency_management | high | No manifest in a project with third-party imports |
+| QUA-001 | code_quality | low | No linter or formatter configuration |
+| QUA-002 | code_quality | medium | Debug or dead code left in source |
+| TST-001 | testing | high | No automated tests |
+| TST-002 | testing | high | CI does not execute the test suite |
+| TST-003 | testing | medium | Tests exist but no automated runner |
+| TST-004 | testing | medium | Tests skipped or disabled |
+| CI-001 | ci_cd | high | No continuous integration workflow |
+| CI-002 | ci_cd | medium | Workflow triggers missing or too narrow |
+| CI-003 | ci_cd | high | CI step cannot fail the build |
+| CI-004 | ci_cd | low | Deprecated runner/action versions |
+| SEC-001 | security | critical | Hardcoded credential in source/config |
+| SEC-002 | security | critical | Environment/secret file committed |
+| SEC-003 | security | high | Unsafe workflow permissions |
+| SEC-004 | security | critical | Untrusted code executed with elevated context |
+| SEC-005 | security | high | Secrets printed or passed to untrusted commands |
+| SEC-006 | security | low | Third-party actions pinned to a mutable tag |
+| CFG-001 | configuration | high | Machine-specific absolute path |
+| CFG-002 | configuration | medium | Local IDE/environment settings committed |
+| CFG-003 | configuration | medium | Configuration without environment separation |
+| CFG-004 | configuration | medium | Debug mode enabled by default |
+| COL-001 | collaboration | high | Unsafe pull-request automation |
+| COL-002 | collaboration | low | No contribution or review guidance |
+| BLD-001 | build_release | medium | Build/packaging not validated in CI |
+| BLD-002 | build_release | high | Risky deployment automation |
+| BLD-003 | build_release | low | No release or versioning process |
+
+Escalation policy: `SEC-001`, `SEC-002`, and `SEC-004` cannot be downgraded below
+`critical`. Style/documentation categories are capped at `medium` so cosmetic
+issues never outrank a missing lockfile or broken CI gate.
+
+## Tools
+
+| Tool | Arguments | Behaviour |
+| --- | --- | --- |
+| `list_files` | `path`, `pattern`, `max_results` | Bounded recursive listing with sizes and glob filtering |
+| `read_file` | `path`, `start_line`, `end_line` | Line-numbered text read, range-limited, binary detection |
+| `search_code` | `pattern`, `path`, `glob`, `case_sensitive`, `max_results` | Regex search (literal fallback), `path:line: snippet` |
+| `git_log` | `limit`, `path` | Recent commits, optionally filtered by path |
+| `submit_report` | `violations[]` | Schema-terminated final answer |
+
+All tools are read-only, path-safe (no `..`, absolute paths, or `.git` access),
+bounded (large files skipped by search, huge reads truncated), and return
+actionable errors instead of raising into the loop. Identical repeated calls
+return a cached result so the model does not loop on the same question.
+
+## Safety guarantees
+
+- **Repository unchanged** - the only write is to the temporary clone, which is deleted.
+- **No code execution** - no `pytest`/`npm`/build steps are run against the target.
+- **No credential exposure** - URLs are sanitised in errors, tool output is redacted,
+  and traces store only redacted previews.
+- **No invented remote state** - branch protection, required reviewers, and repository
+  secrets are not visible from files, so the prompt forbids claiming them.
+- **Bounded resources** - clone depth 50, tool output caps, 30-step budget by default.
+
+## Reliability
+
+- HTTP 429/5xx/connection failures are retried with backoff (5s, 15s, 30s) and
+  `Retry-After` support.
+- Gemini 3 thought signatures are echoed back with tool calls, so multi-step tool
+  use works on Google's OpenAI-compatible endpoint.
+- A malformed `submit_report` gets a corrective tool message instead of aborting.
+- If the model replies with prose, it is nudged twice; if the step budget runs out,
+  a finalisation turn forces submission of what has been proven.
+- Any fatal error exits non-zero with a one-line message and never writes a
+  half-finished report.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+```text
+77 passed
+```
+
+Coverage includes: URL parsing and rejection, clone path traversal/`.git` guards,
+every tool (pagination, globs, invalid regex, redaction, missing paths, caching),
+report normalisation (severity locks/caps, dotfile paths, hallucinated paths,
+dedupe, cap), the agent loop (native and text-protocol tool calls, repair, nudges,
+budget finalisation), and the CLI (invalid URL, missing key, report + trace writing).
+
+## Sample run
+
+```text
+$ python agent.py --repo https://github.com/salarshoaib/devops-audit-fixture --output report.json
+Repository: https://github.com/salarshoaib/devops-audit-fixture
+Model: gemini-3.5-flash-lite
+Cloning repository (shallow, read-only)...
+Cloned salarshoaib/devops-audit-fixture @ a62eb4efba56 (main)
+Observation: 11 overview lines
+Step 1/30
+  -> list_files({}) 212 chars
+Step 2/30
+  -> read_file({"path": ".env"}) 106 chars
+...
+Audit finished in 17.3s, 12 step(s), 14 violation(s).
+Wrote report.json (14 violation(s), 12 step(s)).
+```
+
+The audit found the committed `.env`, hardcoded credentials, `pull_request_target`
+checkout of PR head code, `write-all` permissions, `continue-on-error` test gates,
+missing tests/lockfile, a tracked build log, debug mode, absolute paths, and
+force-push deployment automation.
+
+## Design decisions
+
+- **Clone instead of the GitHub API** - `git_log()` and file reads work on any public
+  repository without tokens, rate limits, or per-file API calls; the clone is shallow
+  (depth 50) to stay fast.
+- **Deterministic overview, LLM-driven investigation** - the overview only saves the
+  model a few discovery calls; it never decides findings. Everything reported must
+  come from a tool result.
+- **Evidence before output** - normalisation refuses to silently pass through
+  hallucinated paths or duplicate root causes, which protects precision on the
+  healthy-repository evaluation.
+- **Prompts define policy, code defines guardrails** - the model decides *what* is a
+  violation; the code enforces schema, severity floors, redaction, and safety.
+
+## Limitations
+
+- Static inspection only: no build, test, or runtime execution by design.
+- History analysis is limited to the last 50 commits of the default branch.
+- Rule ids are curated for common DevOps stacks; genuinely novel findings fall back
+  to `GEN-001`.
+- Report quality depends on the chosen model's tool-calling ability; smaller models
+  may need more steps (`--max-steps`).
+- Cost/latency scale with repository size and step budget.
+
+## Project layout
+
+```text
+agent.py            CLI entry point
+agent_loop.py       agent loop, tool dispatch, finalisation
+llm.py              OpenAI-compatible client + retries
+prompts.py          system/nudge/repair/finalise prompts (see prompt.md)
+prompt.md           human-readable prompt documentation
+tools.py            inspection tools + submit_report schema
+repo.py             clone + path safety
+rules.py            rule catalog
+reporting.py        validation, dedupe, severity policy, JSON writer
+secrets.py          secret redaction
+requirements.txt    runtime/test dependencies
+.env.example        configuration template
+tests/              77 automated tests
+sample_report.json  authentic output from a real run
+```
