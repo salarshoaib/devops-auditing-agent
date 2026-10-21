@@ -47,7 +47,8 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
 - Read dependency manifests line by line. For an application whose
   `requirements.txt` lists entries without exact pins (`Flask`, `requests>=2`),
   report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when
-  no lockfile is committed. Libraries that publish to PyPI and declare bounded
+  no lockfile is committed and the manifest itself does not pin exact versions.
+  Libraries that publish to PyPI and declare bounded
   ranges in `pyproject.toml`/`setup.py` are expected to omit lockfiles - do not
   report DEP-001 for them. Manifest signals in the overview are hints, not proof:
   confirm them with `read_file` before reporting.
