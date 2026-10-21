@@ -43,6 +43,16 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
 - Read workflow files in full. Commands that echo or interpolate secrets
   (`echo $TOKEN`) are SEC-005; `continue-on-error: true` or `|| true` gates that
   hide failures are CI-003; `pull_request_target` with a PR-head checkout is SEC-004.
+  A script that force-pushes to the default branch or deploys without a gate is BLD-002.
+- Read dependency manifests line by line. For an application whose
+  `requirements.txt` lists entries without exact pins (`Flask`, `requests>=2`),
+  report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when
+  no lockfile is committed. Libraries that publish to PyPI and declare bounded
+  ranges in `pyproject.toml`/`setup.py` are expected to omit lockfiles - do not
+  report DEP-001 for them. Manifest signals in the overview are hints, not proof:
+  confirm them with `read_file` before reporting.
+- A test file containing only placeholders (`assert True`, `pass`, skipped tests) is
+  not a test suite - report TST-001 (use TST-004 when real tests are disabled).
 - Security findings need the actual line: report the file and line number, quote a
   short fragment, and never reproduce the secret value itself. Write
   "[REDACTED]" where the value would be.
@@ -56,6 +66,15 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   constraints/unsafe permissions = medium; style and documentation gaps = low.
 - A healthy repository must produce an empty violations list. Reporting nothing
   is a valid, successful outcome.
+
+## Coverage check before submitting
+Before calling `submit_report`, confirm you have inspected:
+- README, `.gitignore`, and top-level configuration;
+- every dependency manifest and whether a lockfile exists;
+- every workflow file (or confirmed that none exist);
+- test files (or confirmed that none exist);
+- any `.env`, deploy script, Dockerfile, or IDE folder you noticed.
+Inspect anything uninspected before submitting; state absence explicitly in evidence.
 
 ## Output contract
 `submit_report` receives:

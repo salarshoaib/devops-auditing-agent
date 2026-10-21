@@ -21,6 +21,7 @@ def test_system_prompt_policy_lines_are_documented():
         "Rule ids must be copied exactly from the catalog",
         "either HYG-004 or CFG-002",
         "A healthy repository must produce an empty violations list.",
+        "Coverage check before submitting",
     ):
         assert line in DOC
         assert line in prompts.SYSTEM_PROMPT

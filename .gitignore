@@ -31,3 +31,6 @@ trace.json
 opencode.json
 assignment.txt
 Assignment_*.pdf
+
+# Local stress-test outputs
+runs/

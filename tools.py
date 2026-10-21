@@ -298,6 +298,60 @@ class ToolBox:
         return result
 
     # -- initial observation --------------------------------------------
+    def _manifest_signals(self) -> list[str]:
+        """Cheap, factual hints that point the model at manifests worth reading."""
+        signals: list[str] = []
+        root = self.repository.root
+
+        requirements = root / "requirements.txt"
+        if requirements.is_file():
+            try:
+                text = requirements.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            entries = [
+                line.split("#", 1)[0].strip()
+                for line in text.splitlines()
+                if line.split("#", 1)[0].strip()
+                and not line.split("#", 1)[0].strip().startswith("-")
+            ]
+            unpinned = [entry for entry in entries if "==" not in entry.replace(" ", "")]
+            signals.append(
+                f"requirements.txt: {len(entries)} direct entr"
+                f"{'y' if len(entries) == 1 else 'ies'}, "
+                f"{len(unpinned)} without an exact == pin"
+            )
+
+        package = root / "package.json"
+        if package.is_file():
+            try:
+                data = json.loads(package.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                data = {}
+            dependencies = data.get("dependencies") if isinstance(data, dict) else None
+            dev_dependencies = data.get("devDependencies") if isinstance(data, dict) else None
+            if dependencies or dev_dependencies:
+                signals.append(
+                    f"package.json: {len(dependencies or {})} runtime, "
+                    f"{len(dev_dependencies or {})} dev dependencies"
+                )
+
+        pyproject = root / "pyproject.toml"
+        if pyproject.is_file():
+            try:
+                text = pyproject.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            declares = bool(re.search(r"^\s*dependencies\s*=", text, re.M)) or (
+                "[tool.poetry.dependencies]" in text
+            )
+            signals.append(
+                "pyproject.toml: declares dependencies"
+                if declares
+                else "pyproject.toml: no dependency declaration detected"
+            )
+        return signals
+
     def overview(self) -> str:
         files = iter_repo_files(self.repository.root)
         total_size = sum(path.stat().st_size for path in files if path.exists())
@@ -369,6 +423,7 @@ class ToolBox:
         if workflows:
             parts.append(f"Workflow files: {', '.join(workflows)}")
             parts.append("Note: workflows were not read yet; inspect the ones relevant to your next step.")
+        parts.extend(self._manifest_signals())
         parts.append(
             "Note: file presence alone is not evidence; confirm contents with read_file or search_code before reporting."
         )

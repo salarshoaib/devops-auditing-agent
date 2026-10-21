@@ -22,6 +22,7 @@ from tools import ToolBox, is_submission_tool, tool_schemas
 MAX_TOOL_CALLS_PER_STEP = 8
 MAX_TOOL_OUTPUT_CHARS = 24000
 MAX_STEPS_HARD_LIMIT = 80
+MAX_EVIDENCE_REPAIRS = 1
 
 
 @dataclass
@@ -50,6 +51,7 @@ class AuditorAgent:
         self.steps = 0
         self.notes: list[str] = []
         self.trace: list[dict[str, Any]] = []
+        self.evidence_repairs = 0
         self._messages: list[dict[str, Any]] = []
         self._schemas = tool_schemas()
 
@@ -142,6 +144,33 @@ class AuditorAgent:
             arguments = call.get("arguments") if isinstance(call.get("arguments"), dict) else {}
 
             if is_submission_tool(name):
+                missing = self._violations_missing_evidence(arguments)
+                if missing and self.evidence_repairs < MAX_EVIDENCE_REPAIRS:
+                    self.evidence_repairs += 1
+                    self.trace.append(
+                        {
+                            "step": self.steps,
+                            "tool": "submit_report",
+                            "arguments": {"violations": "rejected (missing evidence)"},
+                            "result_preview": "rejected: evidence missing for " + ", ".join(missing),
+                            "error": True,
+                        }
+                    )
+                    self._messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id") or "submit",
+                            "name": name,
+                            "content": (
+                                "ERROR: missing non-empty `evidence` for: "
+                                + ", ".join(missing)
+                                + ". Call submit_report again and quote, for each violation, the "
+                                "tool output (path, line, listing, or command) that proves it. "
+                                "Never invent evidence or a path you did not see."
+                            ),
+                        }
+                    )
+                    continue
                 report = self._build_submitted_report(arguments)
                 if report is not None:
                     self.trace.append(
@@ -202,6 +231,22 @@ class AuditorAgent:
                 }
             )
         return None
+
+    def _violations_missing_evidence(self, arguments: dict[str, Any]) -> list[str]:
+        violations = arguments.get("violations")
+        if violations is None and isinstance(arguments.get("report"), dict):
+            violations = arguments["report"].get("violations")
+        if isinstance(violations, dict):
+            violations = [violations]
+        if not isinstance(violations, list):
+            return []
+        missing = []
+        for item in violations:
+            if not isinstance(item, dict):
+                continue
+            if not str(item.get("evidence") or "").strip():
+                missing.append(str(item.get("rule_id") or "unknown rule"))
+        return missing
 
     def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
         violations = arguments.get("violations")

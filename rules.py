@@ -244,7 +244,7 @@ RULES: tuple[Rule, ...] = (
         "COL-001",
         "collaboration",
         "high",
-        "Unsafe pull-request automation",
+        "Unsafe pull-request or merge automation (auto-approve, auto-merge, force-push to main)",
         "Require review and restrict auto-merge or auto-approval workflows.",
     ),
     Rule(
@@ -266,7 +266,7 @@ RULES: tuple[Rule, ...] = (
         "BLD-002",
         "build_release",
         "high",
-        "Risky deployment automation",
+        "Risky deployment automation (force push, deploy on every push, no environment gate)",
         "Gate deployments on review, tags, or protected environments.",
     ),
     Rule(

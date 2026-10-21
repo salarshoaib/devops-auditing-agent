@@ -147,6 +147,22 @@ def test_agent_reports_empty_list_when_model_gives_nothing(sample_repo):
     assert result.submitted is False
 
 
+def test_agent_requests_evidence_before_accepting(sample_repo):
+    no_evidence = dict(VIOLATION, evidence="")
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": [no_evidence]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    assert result.steps == 2
+    assert [entry["error"] for entry in result.trace] == [True, False]
+    assert result.report["violations"][0]["evidence"] == VIOLATION["evidence"]
+
+
 def test_agent_normalises_bad_paths(sample_repo):
     bad = dict(VIOLATION, file="ghost.py", line=99)
     agent = _agent(sample_repo, [_tool_turn("submit_report", {"violations": [bad]})])

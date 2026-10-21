@@ -73,16 +73,16 @@ def test_critical_rules_cannot_be_downgraded():
     assert normalise_violation(raw, _exists)["severity"] == "critical"
 
 
-def test_low_severity_categories_are_capped():
+def test_style_categories_are_capped():
     raw = {
-        "rule_id": "COL-001",
-        "category": "collaboration",
+        "rule_id": "QUA-002",
+        "category": "code_quality",
         "severity": "critical",
         "file": None,
         "line": None,
-        "description": "Auto-merge enabled",
-        "evidence": "workflow merges automatically",
-        "recommendation": "Require review",
+        "description": "Debug statement left in source",
+        "evidence": "print('debug') in app.py",
+        "recommendation": "Remove it",
     }
     assert normalise_violation(raw, _exists)["severity"] == "medium"
 

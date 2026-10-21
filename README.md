@@ -40,7 +40,7 @@ hard-coded repository knowledge; the rule catalog is vocabulary, not a checklist
 - **Never leaks secrets** - tool output fed to the model, trace files, and reports
   all pass through a redactor. Evidence keeps the key name, never the value.
 - **Safe by design** - no repository code is executed; the clone is thrown away.
-- **77 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
+- **80 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
 
 ## Architecture
 
@@ -221,10 +221,10 @@ A real generated report is committed as [`sample_report.json`](sample_report.jso
 | CFG-002 | configuration | medium | Local IDE/environment settings committed |
 | CFG-003 | configuration | medium | Configuration without environment separation |
 | CFG-004 | configuration | medium | Debug mode enabled by default |
-| COL-001 | collaboration | high | Unsafe pull-request automation |
+| COL-001 | collaboration | high | Unsafe pull-request or merge automation |
 | COL-002 | collaboration | low | No contribution or review guidance |
 | BLD-001 | build_release | medium | Build/packaging not validated in CI |
-| BLD-002 | build_release | high | Risky deployment automation |
+| BLD-002 | build_release | high | Risky deployment automation (force push, deploy without gate) |
 | BLD-003 | build_release | low | No release or versioning process |
 
 Escalation policy: `SEC-001`, `SEC-002`, and `SEC-004` cannot be downgraded below
@@ -263,6 +263,8 @@ return a cached result so the model does not loop on the same question.
 - Gemini 3 thought signatures are echoed back with tool calls, so multi-step tool
   use works on Google's OpenAI-compatible endpoint.
 - A malformed `submit_report` gets a corrective tool message instead of aborting.
+- A submission whose findings have no `evidence` is rejected once and re-requested;
+  only a second incomplete submission falls back to a placeholder.
 - If the model replies with prose, it is nudged twice; if the step budget runs out,
   a finalisation turn forces submission of what has been proven.
 - Any fatal error exits non-zero with a one-line message and never writes a
@@ -275,7 +277,7 @@ python -m pytest -q
 ```
 
 ```text
-77 passed
+80 passed
 ```
 
 Coverage includes: URL parsing and rejection, clone path traversal/`.git` guards,
@@ -298,14 +300,36 @@ Step 1/30
 Step 2/30
   -> read_file({"path": ".env"}) 106 chars
 ...
-Audit finished in 17.3s, 12 step(s), 14 violation(s).
-Wrote report.json (14 violation(s), 12 step(s)).
+Audit finished in 16.3s, 12 step(s), 15 violation(s).
+Wrote report.json (15 violation(s), 12 step(s)).
 ```
 
 The audit found the committed `.env`, hardcoded credentials, `pull_request_target`
 checkout of PR head code, `write-all` permissions, `continue-on-error` test gates,
 missing tests/lockfile, a tracked build log, debug mode, absolute paths, and
 force-push deployment automation.
+
+## Validation
+
+Beyond the unit tests, the agent was run against public repositories to check both
+sides of the rubric: precision (mature projects should produce few or no findings)
+and recall (neglected or purpose-built projects should expose their real defects).
+
+| Repository | Result |
+| --- | --- |
+| [encode/httpx](https://github.com/encode/httpx) | 0 findings |
+| [pallets/click](https://github.com/pallets/click) | 0 findings |
+| [psf/requests](https://github.com/psf/requests) | 0 findings |
+| [expressjs/express](https://github.com/expressjs/express) | 0 findings |
+| [gin-gonic/gin](https://github.com/gin-gonic/gin) | 0 findings |
+| [LondheShubham153/node-todo-cicd](https://github.com/LondheShubham153/node-todo-cicd) | 0 findings (Jenkins/Azure pipelines count as CI) |
+| [microsoft/python-sample-vscode-flask-tutorial](https://github.com/microsoft/python-sample-vscode-flask-tutorial) | CI-001, TST-001 (stub test), DEP-002, CFG-001 |
+| [missating/nodejs-todo](https://github.com/missating/nodejs-todo) | CI-001, TST-001, DEP-001, DEP-002, HYG-002 |
+| [salarshoaib/devops-audit-fixture](https://github.com/salarshoaib/devops-audit-fixture) | 15 findings across 7 categories, each with file/line evidence |
+
+The mature repositories all produce zero findings, which is the main guard against
+false positives on healthy evaluation repos. The seeded fixture exercises the recall
+side; its report is committed as `sample_report.json`.
 
 ## Design decisions
 
@@ -346,6 +370,6 @@ reporting.py        validation, dedupe, severity policy, JSON writer
 secrets.py          secret redaction
 requirements.txt    runtime/test dependencies
 .env.example        configuration template
-tests/              77 automated tests
+tests/              80 automated tests
 sample_report.json  authentic output from a real run
 ```

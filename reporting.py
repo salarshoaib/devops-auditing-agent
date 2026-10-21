@@ -19,7 +19,7 @@ RULE_FAMILIES = (
     {"CI-002", "SEC-004"},  # unsafe workflow trigger
 )
 CRITICAL_RULES = {"SEC-001", "SEC-002", "SEC-004"}
-CATEGORY_SEVERITY_CAP = {"code_quality": "medium", "collaboration": "medium"}
+CATEGORY_SEVERITY_CAP = {"code_quality": "medium"}
 REPO_WIDE_RULES = {"TST-001", "CI-001", "HYG-001", "COL-002", "BLD-003", "DEP-004"}
 MAX_VIOLATIONS = 40
 GENERIC_RECOMMENDATION = "Review the finding and remediate it following the linked evidence."

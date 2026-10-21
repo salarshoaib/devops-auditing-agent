@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from repo import RepoTarget, Repository
 from secrets import REDACTED, redact_secrets
 from tools import ToolBox, tool_schemas
 
@@ -128,6 +129,27 @@ def test_overview_reports_markers(toolbox):
     assert "README" in overview
     assert "CI workflows" in overview
     assert "ci.yml" in overview
+
+
+def test_overview_reports_manifest_signals(toolbox):
+    overview = toolbox.overview()
+    assert "requirements.txt: 2 direct entries, 2 without an exact == pin" in overview
+
+
+def test_overview_reads_package_json(tmp_path):
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"express": "^4.0.0"}, "devDependencies": {"jest": "^29"}}',
+        encoding="utf-8",
+    )
+    repo = Repository(
+        target=RepoTarget(owner="acme", name="node"),
+        root=tmp_path,
+        head_sha="deadbeef",
+        branch="main",
+        commit_date="2026-01-01T00:00:00+00:00",
+    )
+    toolbox = ToolBox(repository=repo)
+    assert "package.json: 1 runtime, 1 dev dependencies" in toolbox.overview()
 
 
 def test_tool_schemas_are_well_formed():
