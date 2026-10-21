@@ -326,6 +326,7 @@ and recall (neglected or purpose-built projects should expose their real defects
 | [microsoft/python-sample-vscode-flask-tutorial](https://github.com/microsoft/python-sample-vscode-flask-tutorial) | CI-001, TST-001 (stub test), DEP-002, CFG-001 |
 | [missating/nodejs-todo](https://github.com/missating/nodejs-todo) | CI-001, TST-001, DEP-001, DEP-002, HYG-002 |
 | [salarshoaib/devops-audit-fixture](https://github.com/salarshoaib/devops-audit-fixture) | 15 findings across 7 categories, each with file/line evidence |
+| [salarshoaib/devops-auditing-agent](https://github.com/salarshoaib/devops-auditing-agent) | 0 findings (self-audit) |
 
 The mature repositories all produce zero findings, which is the main guard against
 false positives on healthy evaluation repos. The seeded fixture exercises the recall
