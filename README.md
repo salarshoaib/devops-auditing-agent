@@ -40,7 +40,7 @@ hard-coded repository knowledge; the rule catalog is vocabulary, not a checklist
 - **Never leaks secrets** - tool output fed to the model, trace files, and reports
   all pass through a redactor. Evidence keeps the key name, never the value.
 - **Safe by design** - no repository code is executed; the clone is thrown away.
-- **80 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
+- **166 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
 
 ## Architecture
 
@@ -118,6 +118,7 @@ Copy-Item .env.example .env   # Windows
 | `LLM_MODEL` | yes | `gpt-4o-mini` | Model name, must support tool calling |
 | `LLM_BASE_URL` | no | OpenAI | Base URL of the compatible endpoint |
 | `MAX_STEPS` | no | `30` | Upper bound on LLM steps |
+| `AGENT_TIME_LIMIT_SECONDS` | no | `600` | Total wall-clock limit in seconds; when reached the agent stops investigating and submits the findings it has already proven |
 | `LLM_TIMEOUT` | no | `120` | Per-request timeout in seconds |
 
 Example for Google Gemini's OpenAI-compatible endpoint:
@@ -193,50 +194,58 @@ Rules enforced by `reporting.py`:
 - secret-looking values are redacted everywhere.
 
 A real generated report is committed as [`sample_report.json`](sample_report.json)
-(produced by auditing <https://github.com/salarshoaib/devops-audit-fixture>).
+with its full tool trace in [`docs/sample_trace.json`](docs/sample_trace.json).
+Both come from one run against the fixture repository
+<https://github.com/salarshoaib/injected-test-3>, whose seeded defects were
+injected by [`scripts/inject_round3.py`](scripts/inject_round3.py).
 
 ## Rule catalog
+
+Mirrors `rules.py` exactly (40 rules; `GEN-001` is the fallback used when no
+catalog rule fits):
 
 | Rule | Category | Default severity | Finding |
 | --- | --- | --- | --- |
 | HYG-001 | repository_hygiene | high | No README or setup documentation |
 | HYG-002 | repository_hygiene | medium | Missing or unsuitable `.gitignore` |
-| HYG-003 | repository_hygiene | medium | Generated or temporary files tracked |
-| HYG-004 | repository_hygiene | medium | Editor/OS/dependency directories committed |
-| DEP-001 | dependency_management | high | Missing lockfile for a manifest |
-| DEP-002 | dependency_management | medium | Unpinned or unbounded dependency constraint |
+| HYG-003 | repository_hygiene | medium | Generated or temporary files are tracked |
+| HYG-004 | repository_hygiene | medium | Editor, OS or dependency directories committed |
+| DEP-001 | dependency_management | high | Missing lockfile for a dependency manifest |
+| DEP-002 | dependency_management | medium | Unpinned or unbounded dependency constraint in any manifest |
 | DEP-003 | dependency_management | low | Inconsistent dependency declarations |
-| DEP-004 | dependency_management | high | No manifest in a project with third-party imports |
+| DEP-004 | dependency_management | high | No dependency manifest in a project that imports third-party packages |
 | QUA-001 | code_quality | low | No linter or formatter configuration |
 | QUA-002 | code_quality | medium | Debug or dead code left in source |
 | TST-001 | testing | high | No automated tests |
 | TST-002 | testing | high | CI does not execute the test suite |
-| TST-003 | testing | medium | Tests exist but no automated runner |
-| TST-004 | testing | medium | Tests skipped or disabled |
+| TST-003 | testing | medium | Tests exist but are not wired into an automated runner |
+| TST-004 | testing | medium | Tests are skipped or disabled |
 | CI-001 | ci_cd | high | No continuous integration workflow |
-| CI-002 | ci_cd | medium | Workflow triggers missing or too narrow |
+| CI-002 | ci_cd | medium | Workflow triggers are missing or too narrow |
 | CI-003 | ci_cd | high | CI step cannot fail the build |
-| CI-004 | ci_cd | low | Runner/action reference follows a moving branch |
+| CI-004 | ci_cd | low | Runner or action reference follows a moving branch instead of a release |
 | CI-005 | ci_cd | medium | Packages installed in CI without version pins |
-| SEC-001 | security | critical | Hardcoded credential in source/config |
+| SEC-001 | security | critical | Hardcoded credential in source or configuration |
 | SEC-002 | security | critical | Environment/secret file committed |
 | SEC-003 | security | high | Unsafe workflow permissions |
 | SEC-004 | security | critical | Untrusted code executed with elevated context |
 | SEC-005 | security | high | Secrets printed or passed to untrusted commands |
-| SEC-006 | security | low | Action reference points at a moving branch |
-| SEC-007 | security | high | Workflow trigger grants untrusted privileged context |
-| SEC-008 | security | high | Untrusted event data interpolated into a run step |
+| SEC-006 | security | low | Action reference points at a moving branch instead of a version tag or SHA |
+| SEC-007 | security | high | Workflow trigger grants untrusted code a privileged context |
+| SEC-008 | security | high | Untrusted event data interpolated into a workflow shell command |
 | SEC-009 | security | high | Remote script downloaded and piped into a shell |
-| SEC-010 | security | critical | Connection string with embedded credentials |
-| CFG-001 | configuration | high | Machine-specific absolute path |
-| CFG-002 | configuration | medium | Local IDE/environment settings committed |
-| CFG-003 | configuration | medium | Configuration without environment separation |
-| CFG-004 | configuration | medium | Debug mode enabled by default |
-| COL-001 | collaboration | high | Unsafe pull-request or merge automation |
+| SEC-010 | security | critical | Connection string or URL with embedded credentials |
+| SEC-011 | security | medium | Container image runs as root |
+| CFG-001 | configuration | high | Machine-specific absolute path in project files |
+| CFG-002 | configuration | medium | Committed IDE/editor settings with machine-specific paths |
+| CFG-003 | configuration | medium | Configuration hardcoded without environment separation |
+| CFG-004 | configuration | medium | Debug mode enabled in production or deployment configuration |
+| COL-001 | collaboration | high | Unsafe pull-request or merge automation (auto-approve, auto-merge, force-push to main) |
 | COL-002 | collaboration | low | No contribution or review guidance |
-| BLD-001 | build_release | medium | Build/packaging not validated in CI |
-| BLD-002 | build_release | high | Risky deployment automation (force push, deploy without gate) |
+| BLD-001 | build_release | medium | Build or packaging is not validated in CI |
+| BLD-002 | build_release | high | Risky deployment automation (force push, deploy on every push, no environment gate) |
 | BLD-003 | build_release | low | No release or versioning process |
+| BLD-004 | build_release | medium | Container base image uses a floating tag instead of a pinned version |
 
 Escalation policy: `SEC-001`, `SEC-002`, and `SEC-004` cannot be downgraded below
 `critical`. Style/documentation categories are capped at `medium` so cosmetic
@@ -294,7 +303,7 @@ python -m pytest -q
 ```
 
 ```text
-80 passed
+166 passed
 ```
 
 Coverage includes: URL parsing and rejection, clone path traversal/`.git` guards,
@@ -305,26 +314,37 @@ budget finalisation), and the CLI (invalid URL, missing key, report + trace writ
 
 ## Sample run
 
+The committed [`sample_report.json`](sample_report.json) and
+[`docs/sample_trace.json`](docs/sample_trace.json) come from **one run** against
+the fixture repository <https://github.com/salarshoaib/injected-test-3>, which
+was seeded with known defects by [`scripts/inject_round3.py`](scripts/inject_round3.py).
+Recall varies between runs because the model is non-deterministic; this sample
+is one such run.
+
 ```text
-$ python agent.py --repo https://github.com/salarshoaib/devops-audit-fixture --output report.json
-Repository: https://github.com/salarshoaib/devops-audit-fixture
+$ python agent.py --repo https://github.com/salarshoaib/injected-test-3 --output sample_report.json --trace docs/sample_trace.json
+Repository: https://github.com/salarshoaib/injected-test-3
 Model: gemini-3.5-flash-lite
 Cloning repository (shallow, read-only)...
-Cloned salarshoaib/devops-audit-fixture @ a62eb4efba56 (main)
-Observation: 11 overview lines
-Step 1/30
-  -> list_files({}) 212 chars
-Step 2/30
-  -> read_file({"path": ".env"}) 106 chars
 ...
-Audit finished in 16.3s, 12 step(s), 15 violation(s).
-Wrote report.json (15 violation(s), 12 step(s)).
+Audit finished in ..., 30 step(s), 8 violation(s).
+Wrote sample_report.json (8 violation(s), 30 step(s)).
 ```
 
-The audit found the committed `.env`, hardcoded credentials, `pull_request_target`
-checkout of PR head code, `write-all` permissions, `continue-on-error` test gates,
-missing tests/lockfile, a tracked build log, debug mode, absolute paths, and
-force-push deployment automation.
+Scored against [`scripts/truth_round3.json`](scripts/truth_round3.json):
+
+```text
+$ python scripts/score.py sample_report.json scripts/truth_round3.json
+Recall 8/15
+Precision 8/8
+```
+
+That is 8 of 15 seeded defects found, and 0 false positives. The run followed
+the operational search guidance (machine paths, credential-in-URL, secret
+assignments, key prefixes, debug flags), then read the hits' files, then read
+every workflow, the Dockerfile, `Pipfile`, `requirements-dev.txt`, and the
+committed IDE settings before submitting; the late `git_log` call came from the
+pre-submit history nudge.
 
 ## Validation
 
@@ -342,39 +362,58 @@ and recall (neglected or purpose-built projects should expose their real defects
 | [LondheShubham153/node-todo-cicd](https://github.com/LondheShubham153/node-todo-cicd) | 0 findings (Jenkins/Azure pipelines count as CI) |
 | [microsoft/python-sample-vscode-flask-tutorial](https://github.com/microsoft/python-sample-vscode-flask-tutorial) | CI-001, TST-001 (stub test), DEP-002, CFG-001 |
 | [missating/nodejs-todo](https://github.com/missating/nodejs-todo) | CI-001, TST-001, DEP-001, DEP-002, HYG-002 |
-| [salarshoaib/devops-audit-fixture](https://github.com/salarshoaib/devops-audit-fixture) | 15 findings across 7 categories, each with file/line evidence |
+| [salarshoaib/injected-test-3](https://github.com/salarshoaib/injected-test-3) | 8 findings, 0 false positives (recall 8/15 vs `scripts/truth_round3.json`; one run, see Sample run) |
 | [salarshoaib/devops-auditing-agent](https://github.com/salarshoaib/devops-auditing-agent) | 0 findings (self-audit) |
 
 The mature repositories all produce zero findings, which is the main guard against
 false positives on healthy evaluation repos. The seeded fixture exercises the recall
-side; its report is committed as `sample_report.json`.
+side; its scored report is committed as `sample_report.json`.
 
 ## Evaluating recall
 
-`scripts/inject_defects.py` builds a throw-away copy of a public repository
-(`encode/httpx`) with a fresh two-commit history and a known set of seeded
-defects: a `pull_request_target` workflow that checks out the PR head with
-`write-all` permissions, a masked test gate, fake credentials in
-`app/settings_local.py`, hardcoded machine paths, a committed `.env`, and tracked
-build artifacts. It never pushes; it prints the exact commands to publish the
-fixture under your own account.
+Three injector scripts build throw-away copies of public repositories with known,
+seeded defects (FAKE data only). Each one shallow-clones the upstream repo, drops
+its history, makes a baseline commit, writes the seeded files, and commits them.
+**None of them push**; each prints the local path and the exact
+`git remote add` / `git push` commands for you to publish the fixture under your
+own account, because the agent only audits public GitHub URLs.
 
-`scripts/truth.json` lists the seeded defects (`file` plus matching `keywords`),
-and `scripts/score.py` scores a report against it:
+| Round | Injector | Truth set | Seeded defects |
+| --- | --- | --- | --- |
+| 1 | `scripts/inject_defects.py` | `scripts/truth.json` (11 entries) | privileged PR workflow, masked test gate, fake credentials, machine paths, committed `.env`, tracked build artifacts |
+| 2 | `scripts/inject_round2.py` | `scripts/truth_round2.json` (10 entries) | remote script piped to shell, PR-title script injection, `write-all` permissions, unpinned CI installs, branch-pinned action, secret in workflow env, committed IDE settings, debug mode, credentialed DB URL, unpinned dev requirements |
+| 3 | `scripts/inject_round3.py` | `scripts/truth_round3.json` (15 entries) | privileged `pull_request_target` with branch checkout, `eval` of comment body, dead branch trigger and masked pytest, Dockerfile floating tag/secret/root user, committed `.idea`, debug + password in `local.cfg`, wildcard `Pipfile`, committed `.env.production`, `.gitignore` gaps |
+
+`scripts/score.py` scores a report against a truth set. The truth file is an
+optional second argument and defaults to `scripts/truth.json`:
 
 ```powershell
-python scripts/score.py report.json
-# Recall 8/8
-# Precision 8/9
+python scripts/score.py report.json                          # rounds 1's truth set
+python scripts/score.py report.json scripts/truth_round3.json # round 3's truth set
+# Recall 8/15
+# Precision 8/8
 # MISSED ...
 # EXTRA ...
 ```
 
 A finding counts as a match when its file path contains (or is contained in) the
-expected path and any keyword appears in its description or evidence. Recall is
-the fraction of seeded defects that were found; precision is the fraction of
-reported findings that matched a seeded defect. The agent only audits public
-GitHub URLs, so publishing the prepared clone is a manual step.
+expected path and any keyword appears in its description or evidence. Scoring is
+one-to-one: each violation can satisfy at most one truth entry. Recall is the
+fraction of seeded defects that were found; precision is the fraction of reported
+findings that matched a seeded defect.
+
+Honest tuning history:
+
+- **Round 1** was used for development: its misses drove rule and prompt changes,
+  so it no longer measures generalisation.
+- **Round 2** was tuned against after its first run; its score therefore also
+  overstates current generalisation.
+- **Round 3** was untuned on its first run - no rule, prompt, or code change was
+  made in response to its misses - so unlike rounds 1 and 2 it measures
+  generalisation. The committed `sample_report.json` is one round-3 run and
+  scores **recall 8/15, precision 8/8** (8 findings, 0 false positives) against
+  `scripts/truth_round3.json`. Recall varies between runs because the model is
+  non-deterministic; a re-run may score differently.
 
 ## Design decisions
 
@@ -394,7 +433,7 @@ GitHub URLs, so publishing the prepared clone is a manual step.
 
 | Model | Provider | Result |
 | --- | --- | --- |
-| `gemini-3.5-flash-lite` | Google, OpenAI-compatible endpoint | Tested: 15 findings on the seeded fixture, 0 on mature repositories |
+| `gemini-3.5-flash-lite` | Google, OpenAI-compatible endpoint | Tested: 8 findings / 0 false positives on the round-3 seeded fixture (one run), 0 findings on mature repositories |
 | other OpenAI-compatible models | Any compatible API | Not yet tested |
 
 ## Limitations
@@ -406,10 +445,13 @@ GitHub URLs, so publishing the prepared clone is a manual step.
 - Report quality depends on the chosen model's tool-calling ability; smaller models
   may need more steps (`--max-steps`).
 - Cost/latency scale with repository size and step budget.
-- Recall varies between runs because the LLM is non-deterministic. On a held-out
-  fixture the agent found 8-10 of 15 seeded defects with no false positives.
-  Container-file defects (floating base image, root user) and dead workflow
-  triggers are the least reliably detected.
+- Recall varies between runs because the model is non-deterministic, and the
+  committed sample is one run: against `scripts/truth_round3.json` it found 8 of
+  15 seeded defects with 0 false positives. In that sample the missed defects
+  were an untrusted PR-head checkout in `ci.yml`, a dead branch trigger and a
+  masked pytest failure in `docs.yml`, an unpinned base image and a root user in
+  the `Dockerfile`, unpinned versions in `Pipfile`, and `.gitignore` gaps that
+  left `.env.production` tracked.
 - The default step budget is 30; large repositories with many workflows may
   exhaust it, in which case the agent submits what it has found.
 - Only `gemini-3.5-flash-lite` has been tested; other models are not yet tested.
@@ -426,9 +468,9 @@ tools.py            inspection tools + submit_report schema
 repo.py             clone + path safety
 rules.py            rule catalog
 reporting.py        validation, dedupe, severity policy, JSON writer
-redaction.py          secret redaction
+redaction.py        secret redaction
 requirements.txt    runtime/test dependencies
 .env.example        configuration template
-tests/              80 automated tests
+tests/              166 automated tests
 sample_report.json  authentic output from a real run
 ```
