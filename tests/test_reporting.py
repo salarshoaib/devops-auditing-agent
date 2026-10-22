@@ -240,7 +240,7 @@ def test_equivalent_rules_are_collapsed_per_file():
         "https://github.com/acme/demo",
         [
             dict(base, rule_id="CFG-002", severity="medium", line=2, description="Local IDE settings committed"),
-            dict(base, rule_id="HYG-004", severity="medium", line=1, description="Editor directory committed"),
+            dict(base, rule_id="HYG-004", severity="medium", line=2, description="Editor directory committed"),
         ],
         lambda path: True,
     )

@@ -144,7 +144,7 @@ def build_report(
 ) -> dict[str, Any]:
     collected: list[dict[str, Any]] = []
     seen_ids: set[tuple[str, str | None, int | None, str]] = set()
-    seen_descriptions: set[tuple[str | None, str]] = set()
+    seen_descriptions: set[tuple[str | None, int | None, str]] = set()
 
     for raw in raw_violations:
         violation = normalise_violation(raw, path_exists, notes)
@@ -156,7 +156,11 @@ def build_report(
             violation["line"],
             violation["description"].lower(),
         )
-        description_key = (violation["file"], violation["description"].lower())
+        description_key = (
+            violation["file"],
+            violation["line"],
+            violation["description"].lower(),
+        )
         if key in seen_ids or description_key in seen_descriptions:
             continue
         seen_ids.add(key)
@@ -195,41 +199,42 @@ def _similar(first: str, second: str) -> bool:
     return overlap >= 0.6
 
 
-def _drop_overlapping(violations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Remove findings that describe an already-reported root cause.
+def _in_same_family(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Return True when both rule ids belong to the same duplicate family."""
+    return any(
+        first["rule_id"] in family and second["rule_id"] in family
+        for family in RULE_FAMILIES
+    )
 
-    Two findings collapse when they point at the same file/line, or when the
-    same file and category carry near-identical descriptions. The list is sorted
-    by severity first, so the most serious finding survives.
+
+def _is_duplicate(candidate: dict[str, Any], existing: dict[str, Any]) -> bool:
+    """Return True only when two findings describe the same defect.
+
+    Findings in different files are never duplicates. When both carry a line
+    number the line decides; when a line is missing, near-identical wording
+    (and, for family members, near-identical evidence) is required.
+    """
+    if candidate["file"] is None or candidate["file"] != existing["file"]:
+        return False
+    if candidate["line"] is not None and existing["line"] is not None:
+        return candidate["line"] == existing["line"]
+    same_issue = candidate["category"] == existing["category"] and _similar(
+        candidate["description"], existing["description"]
+    )
+    same_family = _in_same_family(candidate, existing) and _similar(
+        candidate["evidence"], existing["evidence"]
+    )
+    return same_issue or same_family
+
+
+def _drop_overlapping(violations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove findings that repeat an already-reported defect.
+
+    The list is sorted by severity first, so the most serious finding survives.
     """
     kept: list[dict[str, Any]] = []
     for candidate in violations:
-        duplicate = False
-        for existing in kept:
-            same_anchor = (
-                candidate["file"] is not None
-                and candidate["file"] == existing["file"]
-                and candidate["line"] is not None
-                and candidate["line"] == existing["line"]
-            )
-            same_issue = (
-                candidate["file"] is not None
-                and candidate["file"] == existing["file"]
-                and candidate["category"] == existing["category"]
-                and _similar(candidate["description"], existing["description"])
-            )
-            same_family = (
-                candidate["file"] is not None
-                and candidate["file"] == existing["file"]
-                and any(
-                    candidate["rule_id"] in family and existing["rule_id"] in family
-                    for family in RULE_FAMILIES
-                )
-            )
-            if same_anchor or same_issue or same_family:
-                duplicate = True
-                break
-        if not duplicate:
+        if not any(_is_duplicate(candidate, existing) for existing in kept):
             kept.append(candidate)
     return kept
 
