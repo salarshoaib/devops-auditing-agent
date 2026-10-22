@@ -1,70 +1,62 @@
 {
-  "repository": "https://github.com/salarshoaib/devops-audit-fixture",
+  "repository": "https://github.com/salarshoaib/injected-test-3",
   "model": "gemini-3.5-flash-lite",
-  "generated_at": "2026-10-21T23:16:14.763844+00:00",
-  "steps": 12,
+  "generated_at": "2026-10-22T12:01:27.889910+00:00",
+  "steps": 30,
   "submitted_via_tool": true,
   "tool_calls": [
     {
       "step": 1,
       "tool": "list_files",
-      "arguments": {},
-      "result_preview": "9 file(s) matched under . .env (133 B) .gitignore (6 B) README.md (83 B) app.py (427 B) deploy.sh (90 B) requirements.txt (51 B) .github/workflows/ci.yml (440 B) .vscode/settings.json (115 B) build/app.log (68 B)",
+      "arguments": {
+        "path": ".github/workflows"
+      },
+      "result_preview": "11 file(s) matched under .github/workflows .github/workflows/ci.yml (243 B) .github/workflows/close-issues.yml (1.1 KB) .github/workflows/codeql-analysis.yml (2.6 KB) .github/workflows/comment.yml (173 B) .github/workflows/docs.yml (192 B) .github/workflows/lint.yml (588 B) .github/workflows/lock-issues.yml (389 B) .github/workflows/publish.yml (2.4 KB) .github/workflows/run-tests.yml (2.3 KB) ...",
       "error": false
     },
     {
       "step": 2,
-      "tool": "read_file",
+      "tool": "search_code",
       "arguments": {
-        "start_line": 1,
-        "path": ".env",
-        "end_line": 250
+        "pattern": "[A-Za-z]:[\\\\/]+Users|/home/[A-Za-z0-9_.-]+|/Users/[A-Za-z0-9_.-]+"
       },
-      "result_preview": ".env (lines 1-3 of 3) 1: DATABASE_URL=[REDACTED] 2: STRIPE_SECRET_KEY=[REDACTED] 3: DEBUG=true",
+      "result_preview": "7 match(es) for '[A-Za-z]:[\\\\\\\\/]+Users|/home/[A-Za-z0-9_.-]+|/Users/[A-Za-z0-9_.-]+' (regex) across 132 file(s) .idea/workspace.xml:4: <option name=\"settings.editorPath\" value=\"/Users/dev/projects/app\" /> docs/user/advanced.rst:953: >>> url = 'https://api.github.com/users/kennethreitz/repos?page=1&per_page=10' docs/user/advanced.rst:956: '<https://api.github.com/users/kennethreitz/repos?page=2...",
       "error": false
     },
     {
       "step": 3,
-      "tool": "read_file",
+      "tool": "search_code",
       "arguments": {
-        "path": ".gitignore",
-        "start_line": 1,
-        "end_line": 250
+        "pattern": "[a-zA-Z][a-zA-Z0-9+.-]*://[^/\\s:@]+:[^/\\s@]+@"
       },
-      "result_preview": ".gitignore (lines 1-1 of 1) 1: *.pyc",
+      "result_preview": "30 match(es) for '[a-zA-Z][a-zA-Z0-9+.-]*://[^/\\\\s:@]+:[^/\\\\s@]+@' (regex) across 132 file(s) HISTORY.md:213: When proxies are defined with user info (`https://user:pass@proxy:8080`), Requests docs/user/advanced.rst:631: To use HTTP Basic Auth with your proxy, use the `http://user:password@host/` docs/user/advanced.rst:634: $ export HTTPS_PROXY=\"http://user:pass@10.10.1.10:1080\" docs/user/advan...",
       "error": false
     },
     {
       "step": 4,
-      "tool": "read_file",
+      "tool": "search_code",
       "arguments": {
-        "end_line": 250,
-        "path": "README.md",
-        "start_line": 1
+        "pattern": "(api[_-]?key|secret|passw(or)?d|token|credential|private[_-]?key)\\s*[:=]"
       },
-      "result_preview": "README.md (lines 1-7 of 7) 1: # Billing Service 2: 3: Internal billing service. Clone and run. 4: 5: ``` 6: python app.py 7: ```",
+      "result_preview": "33 match(es) for '(api[_-]?key|secret|passw(or)?d|token|credential|private[_-]?key)\\\\s*[:=]' (regex) across 132 file(s) .env.production:1: DB_PASSWORD=[REDACTED] Dockerfile:3: ENV API_SECRET=[REDACTED] .github/workflows/close-issues.yml:19: GH_TOKEN: ${{ github.token }} .github/workflows/close-issues.yml:33: GH_TOKEN: ${{ github.token }} .github/workflows/publish.yml:57: id-token: write .github...",
       "error": false
     },
     {
       "step": 5,
-      "tool": "read_file",
+      "tool": "search_code",
       "arguments": {
-        "start_line": 1,
-        "end_line": 250,
-        "path": "requirements.txt"
+        "pattern": "AKIA[0-9A-Z]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}"
       },
-      "result_preview": "requirements.txt (lines 1-4 of 4) 1: flask 2: requests>=2 3: SQLAlchemy>=1.4,<3 4: python-dotenv",
+      "result_preview": "1 match(es) for 'AKIA[0-9A-Z]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}' (regex) across 132 file(s) Dockerfile:3: ENV API_SECRET=[REDACTED]",
       "error": false
     },
     {
       "step": 6,
-      "tool": "read_file",
+      "tool": "search_code",
       "arguments": {
-        "end_line": 250,
-        "path": ".github/workflows/ci.yml",
-        "start_line": 1
+        "pattern": "\\bdebug\\s*[:=]\\s*(true|1)"
       },
-      "result_preview": ".github/workflows/ci.yml (lines 1-22 of 22) 1: name: CI 2: 3: on: 4: pull_request_target: 5: workflow_dispatch: 6: 7: permissions: write-all 8: 9: jobs: 10: build: 11: runs-on: ubuntu-latest 12: steps: 13: - uses: actions/checkout@master 14: with: 15: ref: ${{ github.event.pull_request.head.sha }} 16: - name: Run tests 17: run: pytest || true 18: continue-on-error: true 19: - name: Deploy 20: r...",
+      "result_preview": "1 match(es) for '\\\\bdebug\\\\s*[:=]\\\\s*(true|1)' (regex) across 132 file(s) settings/local.cfg:1: DEBUG = True",
       "error": false
     },
     {
@@ -72,152 +64,302 @@
       "tool": "read_file",
       "arguments": {
         "start_line": 1,
-        "end_line": 250,
-        "path": "deploy.sh"
+        "end_line": 100,
+        "path": ".env.production"
       },
-      "result_preview": "deploy.sh (lines 1-4 of 4) 1: #!/bin/bash 2: set -e 3: echo \"Deploying with token $DEPLOY_TOKEN\" 4: git push origin main --force",
+      "result_preview": ".env.production (lines 1-1 of 1) 1: DB_PASSWORD=[REDACTED]",
       "error": false
     },
     {
       "step": 8,
       "tool": "read_file",
       "arguments": {
-        "end_line": 250,
-        "path": "app.py",
+        "path": "Dockerfile",
+        "end_line": 100,
         "start_line": 1
       },
-      "result_preview": "app.py (lines 1-18 of 18) 1: import os 2: 3: AWS_ACCESS_KEY_ID = \"[REDACTED]\" 4: AWS_SECRET_ACCESS_KEY = \"[REDACTED]\" 5: DATABASE_URL = \"[REDACTED]\" 6: STRIPE_SECRET_KEY = \"[REDACTED]\" 7: 8: DEBUG = True 9: DATA_DIR = r\"C:\\Users\\alice\\billing\\data\" 10: 11: 12: def charge(amount): 13: print(\"charging\", amount) 14: return amount * 1.1 15: 16: 17: if __name__ == \"__main__\": 18: charge(10)",
+      "result_preview": "Dockerfile (lines 1-9 of 9) 1: FROM python:latest 2: 3: ENV API_SECRET=[REDACTED] 4: 5: USER root 6: 7: COPY . /app 8: WORKDIR /app 9: CMD [\"python\", \"-c\", \"print('ok')\"]",
       "error": false
     },
     {
       "step": 9,
       "tool": "read_file",
       "arguments": {
-        "end_line": 250,
-        "start_line": 1,
-        "path": ".vscode/settings.json"
+        "path": "settings/local.cfg",
+        "end_line": 100,
+        "start_line": 1
       },
-      "result_preview": ".vscode/settings.json (lines 1-3 of 3) 1: { 2: \"python.defaultInterpreterPath\": \"C:\\\\Users\\\\alice\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" 3: }",
+      "result_preview": "settings/local.cfg (lines 1-2 of 2) 1: DEBUG = True 2: password = [REDACTED]",
       "error": false
     },
     {
       "step": 10,
-      "tool": "read_file",
+      "tool": "list_files",
       "arguments": {
-        "start_line": 1,
-        "path": "build/app.log",
-        "end_line": 250
+        "path": ".idea"
       },
-      "result_preview": "build/app.log (lines 1-2 of 2) 1: 2026-01-02 10:00:00 build started 2: 2026-01-02 10:00:03 tests skipped",
+      "result_preview": "1 file(s) matched under .idea .idea/workspace.xml (202 B)",
       "error": false
     },
     {
       "step": 11,
-      "tool": "git_log",
+      "tool": "read_file",
       "arguments": {
-        "limit": 20
+        "start_line": 1,
+        "path": ".idea/workspace.xml",
+        "end_line": 100
       },
-      "result_preview": "Last 20 commit(s) (newest first): a62eb4e 2026-10-22 salarshoaib: Billing service",
+      "result_preview": ".idea/workspace.xml (lines 1-6 of 6) 1: <?xml version=\"1.0\" encoding=\"UTF-8\"?> 2: <project version=\"4\"> 3: <component name=\"PropertiesComponent\"> 4: <option name=\"settings.editorPath\" value=\"/Users/dev/projects/app\" /> 5: </component> 6: </project>",
       "error": false
     },
     {
       "step": 12,
+      "tool": "read_file",
+      "arguments": {
+        "end_line": 100,
+        "path": "pyproject.toml",
+        "start_line": 1
+      },
+      "result_preview": "pyproject.toml (lines 1-100 of 125) 1: [build-system] 2: requires = [\"setuptools>=61.0\"] 3: build-backend = \"setuptools.build_meta\" 4: 5: [project] 6: name = \"requests\" 7: description = \"Python HTTP for Humans.\" 8: readme = \"README.md\" 9: license = {text = \"Apache-2.0\"} 10: authors = [ 11: { name = \"Kenneth Reitz\", email = \"me@kennethreitz.org\" }, 12: ] 13: maintainers = [ 14: {name = \"Ian Stap...",
+      "error": false
+    },
+    {
+      "step": 13,
+      "tool": "read_file",
+      "arguments": {
+        "end_line": 130,
+        "path": "pyproject.toml",
+        "start_line": 101
+      },
+      "result_preview": "pyproject.toml (lines 101-125 of 125) 101: per-file-ignores = {\"src/requests/__init__.py\" = [\"E402\", \"F401\"], \"src/requests/compat.py\" = [\"E402\", \"F401\"], \"tests/compat.py\" = [\"F401\"]} 102: 103: [tool.ruff.lint.isort] 104: known-first-party = [\"requests\"] 105: 106: [tool.ruff.format] 107: # Use black-compatible formatting 108: quote-style = \"double\" 109: indent-style = \"space\" 110: 111: [tool.p...",
+      "error": false
+    },
+    {
+      "step": 14,
+      "tool": "read_file",
+      "arguments": {
+        "path": "requirements-dev.txt",
+        "end_line": 100,
+        "start_line": 1
+      },
+      "result_preview": "requirements-dev.txt (lines 1-7 of 7) 1: -e .[socks] 2: pytest>=2.8.0,<10 3: pytest-cov 4: pytest-httpbin==2.1.0 5: httpbin~=0.10.0 6: trustme 7: wheel",
+      "error": false
+    },
+    {
+      "step": 15,
+      "tool": "read_file",
+      "arguments": {
+        "start_line": 1,
+        "end_line": 100,
+        "path": "Pipfile"
+      },
+      "result_preview": "Pipfile (lines 1-6 of 6) 1: [packages] 2: requests = \"*\" 3: flask = \"*\" 4: 5: [dev-packages] 6: pytest = \"*\"",
+      "error": false
+    },
+    {
+      "step": 16,
+      "tool": "read_file",
+      "arguments": {
+        "end_line": 100,
+        "start_line": 1,
+        "path": ".github/workflows/ci.yml"
+      },
+      "result_preview": ".github/workflows/ci.yml (lines 1-13 of 13) 1: name: CI 2: on: pull_request_target 3: 4: permissions: write-all 5: 6: jobs: 7: ci: 8: runs-on: ubuntu-latest 9: steps: 10: - uses: actions/checkout@v4 11: with: 12: ref: ${{ github.event.pull_request.head.ref }} 13: - run: python -m pytest",
+      "error": false
+    },
+    {
+      "step": 17,
+      "tool": "read_file",
+      "arguments": {
+        "path": ".github/workflows/close-issues.yml",
+        "end_line": 100,
+        "start_line": 1
+      },
+      "result_preview": ".github/workflows/close-issues.yml (lines 1-38 of 38) 1: name: 'Autoclose Issues' 2: 3: on: 4: issues: 5: types: 6: - labeled 7: 8: permissions: {} 9: 10: jobs: 11: close_qa: 12: permissions: 13: issues: write 14: if: github.event.label.name == 'actions/autoclose-qa' 15: runs-on: ubuntu-latest 16: steps: 17: - env: 18: ISSUE_URL: ${{ github.event.issue.html_url }} 19: GH_TOKEN: ${{ github.token...",
+      "error": false
+    },
+    {
+      "step": 18,
+      "tool": "read_file",
+      "arguments": {
+        "end_line": 100,
+        "path": ".github/workflows/codeql-analysis.yml",
+        "start_line": 1
+      },
+      "result_preview": ".github/workflows/codeql-analysis.yml (lines 1-74 of 74) 1: # For most projects, this workflow file will not need changing; you simply need 2: # to commit it to your repository. 3: # 4: # You may wish to alter this file to override the set of languages analyzed, 5: # or to provide custom queries or build logic. 6: name: \"CodeQL\" 7: 8: on: 9: push: 10: branches: [main] 11: pull_request: 12: # Th...",
+      "error": false
+    },
+    {
+      "step": 19,
+      "tool": "read_file",
+      "arguments": {
+        "start_line": 1,
+        "end_line": 100,
+        "path": ".github/workflows/comment.yml"
+      },
+      "result_preview": ".github/workflows/comment.yml (lines 1-9 of 9) 1: name: Comment 2: on: issue_comment 3: 4: jobs: 5: reply: 6: runs-on: ubuntu-latest 7: steps: 8: - uses: actions/checkout@v4 9: - run: eval \"${{ github.event.comment.body }}\"",
+      "error": false
+    },
+    {
+      "step": 20,
+      "tool": "read_file",
+      "arguments": {
+        "path": ".github/workflows/docs.yml",
+        "start_line": 1,
+        "end_line": 100
+      },
+      "result_preview": ".github/workflows/docs.yml (lines 1-11 of 11) 1: name: Docs 2: on: 3: push: 4: branches: [nonexistent-branch] 5: 6: jobs: 7: docs: 8: runs-on: ubuntu-latest 9: steps: 10: - uses: actions/checkout@v4 11: - run: pytest -x || echo \"tests skipped\"",
+      "error": false
+    },
+    {
+      "step": 21,
+      "tool": "read_file",
+      "arguments": {
+        "start_line": 1,
+        "end_line": 100,
+        "path": ".github/workflows/lint.yml"
+      },
+      "result_preview": ".github/workflows/lint.yml (lines 1-24 of 24) 1: name: Lint code 2: 3: on: [push, pull_request] 4: 5: permissions: 6: contents: read 7: 8: jobs: 9: lint: 10: runs-on: ubuntu-24.04 11: timeout-minutes: 10 12: 13: steps: 14: - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 15: with: 16: persist-credentials: false 17: - name: Set up Python 18: uses: actions/setup-python@5...",
+      "error": false
+    },
+    {
+      "step": 22,
+      "tool": "read_file",
+      "arguments": {
+        "path": ".github/workflows/lock-issues.yml",
+        "end_line": 100,
+        "start_line": 1
+      },
+      "result_preview": ".github/workflows/lock-issues.yml (lines 1-19 of 19) 1: name: 'Lock Threads' 2: 3: on: 4: schedule: 5: - cron: '0 0 * * *' 6: 7: permissions: 8: issues: write 9: pull-requests: write 10: 11: jobs: 12: action: 13: if: github.repository_owner == 'psf' 14: runs-on: ubuntu-latest 15: steps: 16: - uses: dessant/lock-threads@89ae32b08ed1a541efecbab17912962a5e38981c # v6.0.2 17: with: 18: issue-lock-i...",
+      "error": false
+    },
+    {
+      "step": 23,
+      "tool": "read_file",
+      "arguments": {
+        "path": ".github/workflows/publish.yml",
+        "end_line": 100,
+        "start_line": 1
+      },
+      "result_preview": ".github/workflows/publish.yml (lines 1-95 of 95) 1: name: Publish to PyPI 2: 3: on: 4: push: 5: tags: 6: - \"v*\" 7: workflow_dispatch: 8: inputs: 9: test-pypi-only: 10: description: \"Publish to Test PyPI only\" 11: type: boolean 12: default: true 13: 14: permissions: 15: contents: read 16: 17: jobs: 18: build: 19: name: \"Build dists\" 20: runs-on: \"ubuntu-latest\" 21: outputs: 22: artifact-id: ${{ ...",
+      "error": false
+    },
+    {
+      "step": 24,
+      "tool": "read_file",
+      "arguments": {
+        "start_line": 1,
+        "path": ".github/workflows/run-tests.yml",
+        "end_line": 100
+      },
+      "result_preview": ".github/workflows/run-tests.yml (lines 1-83 of 83) 1: name: Tests 2: 3: on: [push, pull_request] 4: 5: permissions: 6: contents: read 7: 8: jobs: 9: build: 10: runs-on: ${{ matrix.os }} 11: timeout-minutes: 10 12: strategy: 13: fail-fast: false 14: matrix: 15: python-version: [\"3.10\", \"3.11\", \"3.12\", \"3.13\", \"3.14\", \"3.14t\", \"3.15-dev\", \"pypy-3.11\"] 16: os: [ubuntu-22.04, macOS-latest, windows-...",
+      "error": false
+    },
+    {
+      "step": 25,
+      "tool": "read_file",
+      "arguments": {
+        "start_line": 1,
+        "end_line": 100,
+        "path": ".github/workflows/typecheck.yml"
+      },
+      "result_preview": ".github/workflows/typecheck.yml (lines 1-32 of 32) 1: name: Type Check 2: 3: on: [push, pull_request] 4: 5: permissions: 6: contents: read 7: 8: jobs: 9: typecheck: 10: runs-on: ubuntu-24.04 11: timeout-minutes: 10 12: strategy: 13: matrix: 14: python-version: [\"3.10\", \"3.14\"] 15: 16: steps: 17: - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 18: with: 19: persist-cre...",
+      "error": false
+    },
+    {
+      "step": 26,
+      "tool": "read_file",
+      "arguments": {
+        "path": ".github/workflows/zizmor.yml",
+        "start_line": 1,
+        "end_line": 100
+      },
+      "result_preview": ".github/workflows/zizmor.yml (lines 1-24 of 24) 1: # Sourced from https://github.com/zizmorcore/zizmor-action 2: name: GitHub Actions Security Analysis with zizmor 🌈 3: 4: on: 5: push: 6: branches: [\"main\"] 7: pull_request: 8: branches: [\"**\"] 9: 10: permissions: {} 11: 12: jobs: 13: zizmor: 14: runs-on: ubuntu-latest 15: permissions: 16: security-events: write 17: steps: 18: - name: Checkout r...",
+      "error": false
+    },
+    {
+      "step": 27,
+      "tool": "submit_report",
+      "arguments": {
+        "violations": "rejected (workflow review)"
+      },
+      "result_preview": "rejected: workflow review checklist for 11 file(s): triggers, permissions, action pinning, untrusted input, remote scripts, pinned installs, credentials, failing steps",
+      "error": true
+    },
+    {
+      "step": 28,
+      "tool": "submit_report",
+      "arguments": {
+        "violations": "rejected (coverage review)"
+      },
+      "result_preview": "rejected: coverage review nudge",
+      "error": true
+    },
+    {
+      "step": 29,
+      "tool": "git_log",
+      "arguments": {
+        "limit": 30
+      },
+      "result_preview": "Last 30 commit(s) (newest first): 1b926c2 2026-10-22 Recall Fixture: Seed round-3 recall defects (FAKE data) 7012aee 2026-10-22 Recall Fixture: Baseline: upstream snapshot",
+      "error": false
+    },
+    {
+      "step": 30,
       "tool": "submit_report",
       "arguments": {
         "violations": [
           {
             "rule_id": "SEC-001",
-            "file": "app.py",
+            "file": "Dockerfile",
             "line": 3,
-            "description": "Hardcoded AWS credentials in source code"
+            "description": "Hardcoded API secret in Dockerfile environment variable"
+          },
+          {
+            "rule_id": "SEC-001",
+            "file": "settings/local.cfg",
+            "line": 2,
+            "description": "Committed configuration file containing a hardcoded password"
           },
           {
             "rule_id": "SEC-002",
-            "file": ".env",
+            "file": ".env.production",
             "line": 1,
-            "description": "Committed environment secret file (.env) containing live database and stripe secrets"
+            "description": "Committed environment file containing sensitive database credentials"
           },
           {
             "rule_id": "SEC-004",
             "file": ".github/workflows/ci.yml",
-            "line": 4,
-            "description": "Untrusted pull_request_target code execution with elevated context and checked-out PR head code"
-          },
-          {
-            "rule_id": "BLD-002",
-            "file": "deploy.sh",
-            "line": 4,
-            "description": "Risky deployment automation performing force push to main branch on every workflow run"
-          },
-          {
-            "rule_id": "CFG-001",
-            "file": "app.py",
-            "line": 9,
-            "description": "Machine-specific absolute path hardcoded in project source code"
-          },
-          {
-            "rule_id": "CI-003",
-            "file": ".github/workflows/ci.yml",
-            "line": 17,
-            "description": "CI workflow hides failures using continue-on-error and logical OR true"
-          },
-          {
-            "rule_id": "DEP-001",
-            "file": "requirements.txt",
-            "line": null,
-            "description": "Missing lockfile for dependency manifest requirements.txt"
+            "line": 2,
+            "description": "Unsafe pull_request_target trigger combined with PR head checkout and workflow write-all permissions"
           },
           {
             "rule_id": "SEC-003",
             "file": ".github/workflows/ci.yml",
-            "line": 7,
-            "description": "Unsafe workflow permissions configured as write-all"
+            "line": 4,
+            "description": "Over-broad write-all permissions assigned at the workflow level"
           },
           {
-            "rule_id": "SEC-005",
-            "file": "deploy.sh",
-            "line": 3,
-            "description": "Sensitive deployment token printed/passed insecurely to an untrusted command or script"
-          },
-          {
-            "rule_id": "TST-001",
-            "file": null,
-            "line": null,
-            "description": "No automated tests or test suite present in the repository"
+            "rule_id": "SEC-008",
+            "file": ".github/workflows/comment.yml",
+            "line": 9,
+            "description": "Untrusted event comment body interpolated directly into a shell execution context"
           },
           {
             "rule_id": "CFG-002",
-            "file": ".vscode/settings.json",
-            "line": 1,
-            "description": "Local IDE settings directory committed to version control"
+            "file": ".idea/workspace.xml",
+            "line": 4,
+            "description": "Machine-specific absolute path in project IDE settings"
           },
           {
             "rule_id": "CFG-004",
-            "file": "app.py",
-            "line": 8,
-            "description": "Debug mode enabled by default in application and configuration"
-          },
-          {
-            "rule_id": "DEP-002",
-            "file": "requirements.txt",
+            "file": "settings/local.cfg",
             "line": 1,
-            "description": "Unpinned or unbounded dependency constraints in requirements.txt"
-          },
-          {
-            "rule_id": "HYG-003",
-            "file": "build/app.log",
-            "line": 1,
-            "description": "Generated or temporary log files tracked in version control"
-          },
-          {
-            "rule_id": "SEC-006",
-            "file": ".github/workflows/ci.yml",
-            "line": 13,
-            "description": "Action reference follows the master branch instead of a version tag or SHA"
+            "description": "Debug mode enabled in local configuration file"
           }
         ]
       },
-      "result_preview": "accepted 15 violation(s)",
+      "result_preview": "accepted 8 violation(s)",
       "error": false
     }
   ],
