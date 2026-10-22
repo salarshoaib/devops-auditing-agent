@@ -1,0 +1,34 @@
+[
+  {
+    "file": ".github/workflows/pr-bot.yml",
+    "keywords": ["pull_request_target"]
+  },
+  {
+    "file": ".github/workflows/pr-bot.yml",
+    "keywords": ["write-all", "permission"]
+  },
+  {
+    "file": ".github/workflows/pr-bot.yml",
+    "keywords": ["master", "pin", "@v"]
+  },
+  {
+    "file": ".github/workflows/tests-extra.yml",
+    "keywords": ["continue-on-error", "|| true"]
+  },
+  {
+    "file": "app/settings_local.py",
+    "keywords": ["token", "credential", "secret"]
+  },
+  {
+    "file": "app/paths.py",
+    "keywords": ["path", "machine", "hardcoded"]
+  },
+  {
+    "file": ".env",
+    "keywords": ["env", "committed", "secret"]
+  },
+  {
+    "file": "build/out.bin",
+    "keywords": ["build", "generated", "tracked"]
+  }
+]
