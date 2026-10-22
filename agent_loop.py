@@ -218,7 +218,7 @@ class AuditorAgent:
                         {
                             "step": self.steps,
                             "tool": "submit_report",
-                            "arguments": {"violations": len(report["violations"])},
+                            "arguments": {"violations": _submitted_summary(report)},
                             "result_preview": f"accepted {len(report['violations'])} violation(s)",
                             "error": False,
                         }
@@ -390,7 +390,7 @@ class AuditorAgent:
                         {
                             "step": self.steps,
                             "tool": "submit_report",
-                            "arguments": {"violations": len(report["violations"])},
+                            "arguments": {"violations": _submitted_summary(report)},
                             "result_preview": (
                                 f"accepted {len(report['violations'])} violation(s) during finalisation"
                             ),
@@ -423,6 +423,19 @@ class AuditorAgent:
 def _preview(text: str, limit: int) -> str:
     compact = " ".join((text or "").split())
     return compact if len(compact) <= limit else compact[: limit - 3] + "..."
+
+
+def _submitted_summary(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Compact, redacted view of the submitted findings for the trace."""
+    return [
+        {
+            "rule_id": violation["rule_id"],
+            "file": violation["file"],
+            "line": violation["line"],
+            "description": redact_secrets(violation["description"]),
+        }
+        for violation in report["violations"]
+    ]
 
 
 def _normalise_repo_path(value: Any) -> str:

@@ -217,3 +217,30 @@ def test_agent_skips_workflow_nudge_when_workflow_has_a_finding(sample_repo):
     assert result.steps == 2
     assert [entry["tool"] for entry in result.trace] == ["read_file", "submit_report"]
     assert result.report["violations"][0]["rule_id"] == "SEC-003"
+
+
+def test_trace_records_submitted_violations(sample_repo):
+    raw = dict(VIOLATION, description="Hardcoded key AKIAIOSFODNN7EXAMPLE in app.py")
+    agent = _agent(sample_repo, [_tool_turn("submit_report", {"violations": [raw]})])
+    result = agent.run()
+    entry = result.trace[-1]
+    assert entry["tool"] == "submit_report"
+    assert entry["arguments"]["violations"] == [
+        {
+            "rule_id": "SEC-001",
+            "file": "app.py",
+            "line": 2,
+            "description": "Hardcoded key [REDACTED] in app.py",
+        }
+    ]
+    assert "AKIAIOSFODNN7EXAMPLE" not in json.dumps(result.trace)
+
+
+def test_trace_records_violations_during_finalisation(sample_repo):
+    turns = [_tool_turn("read_file", {"path": "app.py"}, call_id=f"c{index}") for index in range(3)]
+    turns.append(_tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-final"))
+    agent = _agent(sample_repo, turns, max_steps=3)
+    result = agent.run()
+    entry = [item for item in result.trace if item["tool"] == "submit_report"][-1]
+    assert entry["arguments"]["violations"][0]["rule_id"] == "SEC-001"
+    assert entry["arguments"]["violations"][0]["file"] == "app.py"

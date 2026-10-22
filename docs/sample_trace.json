@@ -124,7 +124,98 @@
       "step": 12,
       "tool": "submit_report",
       "arguments": {
-        "violations": 15
+        "violations": [
+          {
+            "rule_id": "SEC-001",
+            "file": "app.py",
+            "line": 3,
+            "description": "Hardcoded AWS credentials in source code"
+          },
+          {
+            "rule_id": "SEC-002",
+            "file": ".env",
+            "line": 1,
+            "description": "Committed environment secret file (.env) containing live database and stripe secrets"
+          },
+          {
+            "rule_id": "SEC-004",
+            "file": ".github/workflows/ci.yml",
+            "line": 4,
+            "description": "Untrusted pull_request_target code execution with elevated context and checked-out PR head code"
+          },
+          {
+            "rule_id": "BLD-002",
+            "file": "deploy.sh",
+            "line": 4,
+            "description": "Risky deployment automation performing force push to main branch on every workflow run"
+          },
+          {
+            "rule_id": "CFG-001",
+            "file": "app.py",
+            "line": 9,
+            "description": "Machine-specific absolute path hardcoded in project source code"
+          },
+          {
+            "rule_id": "CI-003",
+            "file": ".github/workflows/ci.yml",
+            "line": 17,
+            "description": "CI workflow hides failures using continue-on-error and logical OR true"
+          },
+          {
+            "rule_id": "DEP-001",
+            "file": "requirements.txt",
+            "line": null,
+            "description": "Missing lockfile for dependency manifest requirements.txt"
+          },
+          {
+            "rule_id": "SEC-003",
+            "file": ".github/workflows/ci.yml",
+            "line": 7,
+            "description": "Unsafe workflow permissions configured as write-all"
+          },
+          {
+            "rule_id": "SEC-005",
+            "file": "deploy.sh",
+            "line": 3,
+            "description": "Sensitive deployment token printed/passed insecurely to an untrusted command or script"
+          },
+          {
+            "rule_id": "TST-001",
+            "file": null,
+            "line": null,
+            "description": "No automated tests or test suite present in the repository"
+          },
+          {
+            "rule_id": "CFG-002",
+            "file": ".vscode/settings.json",
+            "line": 1,
+            "description": "Local IDE settings directory committed to version control"
+          },
+          {
+            "rule_id": "CFG-004",
+            "file": "app.py",
+            "line": 8,
+            "description": "Debug mode enabled by default in application and configuration"
+          },
+          {
+            "rule_id": "DEP-002",
+            "file": "requirements.txt",
+            "line": 1,
+            "description": "Unpinned or unbounded dependency constraints in requirements.txt"
+          },
+          {
+            "rule_id": "HYG-003",
+            "file": "build/app.log",
+            "line": 1,
+            "description": "Generated or temporary log files tracked in version control"
+          },
+          {
+            "rule_id": "SEC-006",
+            "file": ".github/workflows/ci.yml",
+            "line": 13,
+            "description": "Third-party action pinned to a mutable tag or branch instead of an immutable commit hash"
+          }
+        ]
       },
       "result_preview": "accepted 15 violation(s)",
       "error": false
