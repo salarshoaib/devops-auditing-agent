@@ -37,6 +37,7 @@ MAX_WORKFLOW_NUDGES = 1
 MAX_WORKFLOW_FILES_LISTED = 15
 MAX_COVERAGE_NUDGES = 1
 MAX_COVERAGE_FILES_LISTED = 12
+MAX_REQUIRED_FILES_LISTED = 25
 # Finalisation gets a tighter retry budget than investigation so total runtime
 # stays close to the wall-clock limit even when the provider is unavailable.
 FINALISE_RETRIES = 1
@@ -80,6 +81,14 @@ GIT_LOG_REVIEW_PROMPT = (
     "empty or unavailable, note that and continue."
 )
 
+READING_REVIEW_PROMPT = (
+    "Before submitting, read these files in full: {files}. They exist in the "
+    "repository tree, and a complete audit must open every workflow file, every "
+    "container build file, every dependency manifest and .gitignore. Reading them "
+    "is not a finding requirement: a clean file produces no violation. After you "
+    "have read them, call submit_report again with the same or an updated report."
+)
+
 
 @dataclass
 class AuditResult:
@@ -115,12 +124,14 @@ class AuditorAgent:
         self._workflow_files_read: set[str] = set()
         self._files_read: set[str] = set()
         self._git_log_called = False
+        self._started = time.time()
         self._messages: list[dict[str, Any]] = []
         self._schemas = tool_schemas()
 
     # -- public ----------------------------------------------------------
     def run(self) -> AuditResult:
         started = time.time()
+        self._started = started
         if self.time_limit > 0:
             setter = getattr(self.llm, "set_deadline", None)
             if callable(setter):
@@ -428,20 +439,56 @@ class AuditorAgent:
             unread.update(path for path in paths if path not in self._files_read)
         return sorted(unread)[:MAX_COVERAGE_FILES_LISTED]
 
-    def _coverage_review_request(self) -> str | None:
-        """Build the pre-submit coverage nudge, or ``None`` when it is not needed.
+    def _unread_required_files(self) -> list[str]:
+        """Required-reading files (workflows, container files, manifests, .gitignore)
+        that the agent has not opened yet, derived only from the file tree."""
+        return [
+            path
+            for path in self.toolbox.required_reading_files()
+            if path not in self._files_read
+        ]
 
-        The nudge asks for the unread candidate files and, when the history was
-        never inspected, for a single ``git_log`` call. It is advisory only: it
-        never creates a finding and the model may resubmit the same report.
+    def _required_reading_request(self) -> str | None:
+        """Nudge the model to read every required file before it can finalise.
+
+        This is a generic completeness check, not a finding: the model may read
+        each file, find nothing, and resubmit the same report.
         """
         if self.coverage_nudges >= MAX_COVERAGE_NUDGES:
             return None
-        candidates = self._unread_candidates()
+        unread = self._unread_required_files()
+        if not unread:
+            return None
+        shown = unread[:MAX_REQUIRED_FILES_LISTED]
+        listing = ", ".join(shown)
+        if len(unread) > len(shown):
+            listing += f" (+{len(unread) - len(shown)} more; use list_files to see them)"
+        return READING_REVIEW_PROMPT.format(files=listing)
+
+    def _coverage_review_request(self) -> str | None:
+        """Build the pre-submit coverage nudge, or ``None`` when it is not needed.
+
+        The nudge asks for unread required files, the unread candidate files and,
+        when the history was never inspected, for a single ``git_log`` call. It is
+        advisory only: it never creates a finding and the model may resubmit the
+        same report. It is skipped once the wall-clock budget is spent so the
+        agent can finalise instead of starting another investigation step.
+        """
+        if self.coverage_nudges >= MAX_COVERAGE_NUDGES:
+            return None
+        if self._time_expired(self._started):
+            return None
+        required_request = self._required_reading_request()
+        required = set(self.toolbox.required_reading_files())
+        candidates = [
+            path for path in self._unread_candidates() if path not in required
+        ]
         needs_history = not self._git_log_called
-        if not candidates and not needs_history:
+        if not required_request and not candidates and not needs_history:
             return None
         parts = []
+        if required_request:
+            parts.append(required_request.strip())
         if candidates:
             parts.append(
                 COVERAGE_REVIEW_PROMPT.format(files=", ".join(candidates)).strip()

@@ -268,3 +268,22 @@ def test_git_log_on_empty_history_does_not_crash(tmp_path):
     toolbox = ToolBox(repository=repo)
     output = toolbox.git_log(limit=5)
     assert "No commits found" in output
+
+
+def test_required_reading_files_come_from_the_tree(sample_repo):
+    (sample_repo.root / "Dockerfile").write_text(
+        "FROM python:3.12-slim\nUSER app\n", encoding="utf-8"
+    )
+    (sample_repo.root / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+    (sample_repo.root / "Makefile").write_text("test:\n\tpytest\n", encoding="utf-8")
+    toolbox = ToolBox(repository=sample_repo)
+
+    required = toolbox.required_reading_files()
+
+    assert ".github/workflows/ci.yml" in required
+    assert "requirements.txt" in required
+    assert "requirements-dev.txt" in required
+    assert ".gitignore" in required
+    assert "Dockerfile" in required
+    # Build files that are not container definitions are candidates, not required reading.
+    assert "Makefile" not in required

@@ -168,6 +168,7 @@ class Repository:
     head_sha: str
     branch: str
     commit_date: str
+    branches: tuple[str, ...] = ()
     _tmpdir: tempfile.TemporaryDirectory | None = None
 
     def path_for(self, relative: str) -> Path:
@@ -230,6 +231,7 @@ def clone_repository(value: str, depth: int = CLONE_DEPTH) -> Repository:
         commit_date = _run_git(
             ["log", "-1", "--format=%cI"], cwd=destination, url=target.https_url
         ).strip()
+        branches = _remote_branches(destination, target.https_url, branch)
     except Exception:
         tmpdir.cleanup()
         raise
@@ -239,8 +241,33 @@ def clone_repository(value: str, depth: int = CLONE_DEPTH) -> Repository:
         head_sha=head_sha,
         branch=branch,
         commit_date=commit_date,
+        branches=branches,
         _tmpdir=tmpdir,
     )
+
+
+def _remote_branches(root: Path, url: str, default_branch: str) -> tuple[str, ...]:
+    """Best-effort list of branch names on the remote.
+
+    A shallow single-branch clone only contains the default branch, so this asks
+    the remote once. Failure is not fatal: the audit proceeds without the list.
+    """
+    names: set[str] = set()
+    try:
+        output = _run_git(
+            ["ls-remote", "--heads", url],
+            cwd=root,
+            url=url,
+        )
+    except (RepoError, ValueError):
+        output = ""
+    for line in (output or "").splitlines():
+        _, _, ref = line.partition("\t")
+        if ref.startswith("refs/heads/"):
+            names.add(ref.removeprefix("refs/heads/").strip())
+    if default_branch and default_branch != "HEAD":
+        names.add(default_branch)
+    return tuple(sorted(name for name in names if name))
 
 
 def is_probably_binary(path: Path, sample_size: int = 4096) -> bool:

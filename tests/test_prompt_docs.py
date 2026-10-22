@@ -23,7 +23,15 @@ def test_system_prompt_policy_lines_are_documented():
         "A healthy repository must produce an empty violations list.",
         "Coverage check before submitting",
         "Repository-wide searches",
+        "Required reading",
+        "reading them is not a finding requirement",
     ):
+        assert line in DOC
+        assert line in prompts.SYSTEM_PROMPT
+
+
+def test_required_reading_guidance_is_documented_verbatim():
+    for line in prompts.REQUIRED_READING_GUIDANCE.splitlines():
         assert line in DOC
         assert line in prompts.SYSTEM_PROMPT
 

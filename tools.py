@@ -46,6 +46,11 @@ CONTAINER_FILE = re.compile(
     r"(^|/)(Dockerfile[^/]*|Containerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml|Makefile)$",
     re.IGNORECASE,
 )
+WORKFLOW_FILE = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$", re.IGNORECASE)
+REQUIRED_CONTAINER = re.compile(
+    r"(^|/)(Dockerfile[^/]*|Containerfile[^/]*)$", re.IGNORECASE
+)
+GITIGNORE_FILE = re.compile(r"(^|/)\.gitignore$")
 
 INVALID_PATTERN_HINT = (
     "Fix the pattern and retry: escape literal backslashes as \\\\, close character "
@@ -366,6 +371,25 @@ class ToolBox:
                 candidates["configuration-like files"].append(relative)
         return {label: sorted(paths) for label, paths in candidates.items()}
 
+    # -- required reading ------------------------------------------------
+    def required_reading_files(self) -> list[str]:
+        """Every file a complete audit must open, derived only from the tree.
+
+        This is the reading set, never a findings list: each file still has to be
+        read and judged, and a clean file produces no violation.
+        """
+        required: list[str] = []
+        for path in iter_repo_files(self.repository.root):
+            relative = self.repository.relative(path)
+            if (
+                WORKFLOW_FILE.match(relative)
+                or REQUIRED_CONTAINER.search(relative)
+                or DEPENDENCY_MANIFEST.search(relative)
+                or GITIGNORE_FILE.search(relative)
+            ):
+                required.append(relative)
+        return sorted(set(required))
+
     # -- initial observation --------------------------------------------
     def _manifest_signals(self) -> list[str]:
         """Cheap, factual hints that point the model at manifests worth reading."""
@@ -489,6 +513,12 @@ class ToolBox:
             f"Test-like files: {len(test_files)}"
             + (f" (e.g. {', '.join(test_files[:6])})" if test_files else ""),
         ]
+        if self.repository.branches:
+            shown = list(self.repository.branches[:20])
+            more = len(self.repository.branches) - len(shown)
+            parts.append(
+                "Branches on the remote: " + ", ".join(shown) + (f" (+{more} more)" if more else "")
+            )
         if workflows:
             parts.append(f"Workflow files: {', '.join(workflows)}")
             parts.append("Note: workflows were not read yet; inspect the ones relevant to your next step.")

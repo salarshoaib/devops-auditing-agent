@@ -195,6 +195,72 @@ def test_agent_normalises_bad_paths(sample_repo):
     assert violation["line"] is None
 
 
+def test_completeness_nudge_lists_unread_required_files(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    assert result.report["violations"] == []
+    nudges = [
+        message["content"]
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool"
+        and "read these files in full" in message.get("content", "")
+    ]
+    assert nudges
+    text = nudges[-1]
+    for path in (".github/workflows/ci.yml", "requirements.txt", ".gitignore"):
+        assert path in text
+    assert "not a finding requirement" in text
+
+
+def test_completeness_nudge_is_silent_when_required_files_are_read(sample_repo):
+    (sample_repo.root / "Dockerfile").write_text(
+        "FROM python:3.12-slim\nUSER app\n", encoding="utf-8"
+    )
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": "requirements.txt"}, call_id="r1"),
+            _tool_turn("read_file", {"path": ".gitignore"}, call_id="r2"),
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r3"),
+            _tool_turn("read_file", {"path": "Dockerfile"}, call_id="r4"),
+            _tool_turn("read_file", {"path": "config.py"}, call_id="r5"),
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    assert agent.coverage_nudges == 0
+    tool_messages = [
+        message.get("content", "")
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool"
+    ]
+    assert not any("read these files in full" in text for text in tool_messages)
+
+
+def test_completeness_nudge_is_skipped_after_the_deadline(sample_repo):
+    agent = _agent(sample_repo, [])
+    agent.time_limit = 60
+    assert agent._coverage_review_request()
+
+    agent._started = 0.0  # the wall-clock budget is long spent
+    assert agent._unread_required_files()
+    assert agent._coverage_review_request() is None
+
+
 def test_agent_nudges_workflow_review_before_accepting(sample_repo):
     agent = _agent(
         sample_repo,
@@ -303,7 +369,8 @@ def test_coverage_nudge_lists_only_unread_candidates(sample_repo):
         message["content"]
         for call in agent.llm.calls
         for message in call["messages"]
-        if message.get("role") == "tool" and "not findings" in message.get("content", "")
+        if message.get("role") == "tool"
+        and "read these files in full" in message.get("content", "")
     ][-1]
     assert "requirements.txt" in nudge
     assert "config.py" not in nudge
@@ -343,10 +410,13 @@ def test_coverage_nudge_omits_git_log_after_history_was_read(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("read_file", {"path": "requirements.txt"}, call_id="r1"),
+            _tool_turn("read_file", {"path": ".gitignore"}, call_id="r2"),
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r3"),
             _tool_turn("git_log", {"limit": 5}, call_id="g1"),
-            _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-3"),
         ],
     )
     result = agent.run()
@@ -358,6 +428,7 @@ def test_coverage_nudge_omits_git_log_after_history_was_read(sample_repo):
         if message.get("role") == "tool" and "not findings" in message.get("content", "")
     ]
     assert nudges
+    assert "config.py" in nudges[-1]
     assert "git_log" not in nudges[-1]
 
 
