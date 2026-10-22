@@ -4,7 +4,7 @@ import pytest
 
 from repo import RepoTarget, Repository
 from redaction import REDACTED, redact_secrets
-from tools import ToolBox, tool_schemas
+from tools import ToolBox, ToolError, tool_schemas
 
 
 @pytest.fixture
@@ -141,6 +141,30 @@ def test_unknown_tool_is_an_error(toolbox):
     assert result.startswith("ERROR:")
 
 
+def test_candidate_files_include_build_and_container_files(toolbox, sample_repo):
+    root = sample_repo.root
+    (root / "Dockerfile").write_text("FROM python:latest\n", encoding="utf-8")
+    (root / "Dockerfile.dev").write_text("FROM python:3.12\n", encoding="utf-8")
+    (root / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (root / "Makefile").write_text("all:\n\techo hi\n", encoding="utf-8")
+
+    candidates = toolbox.candidate_files()
+
+    container = candidates["build and container files"]
+    assert "Dockerfile" in container
+    assert "Dockerfile.dev" in container
+    assert "docker-compose.yml" in container
+    assert "Makefile" in container
+
+
+def test_candidate_files_do_not_treat_ordinary_sources_as_container_files(
+    toolbox, sample_repo
+):
+    container = toolbox.candidate_files()["build and container files"]
+    assert "app.py" not in container
+    assert "config.py" not in container
+
+
 def test_candidate_files_are_tree_derived(toolbox, sample_repo):
     root = sample_repo.root
     (root / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
@@ -214,3 +238,33 @@ def test_redact_secrets_variants():
     assert "password" in masked
     # Environment references are not secrets.
     assert "${DATABASE_URL}" in redact_secrets("url = ${DATABASE_URL}")
+
+
+def test_search_code_rejects_empty_pattern(toolbox):
+    with pytest.raises(ToolError) as excinfo:
+        toolbox.search_code("   ")
+    message = str(excinfo.value)
+    assert "non-empty pattern" in message
+
+
+def test_git_log_on_empty_history_does_not_crash(tmp_path):
+    import subprocess
+
+    root = tmp_path / "historyless"
+    root.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"],
+        cwd=str(root),
+        check=True,
+        capture_output=True,
+    )
+    repo = Repository(
+        target=RepoTarget(owner="acme", name="historyless"),
+        root=root.resolve(),
+        head_sha="",
+        branch="main",
+        commit_date="2026-01-01T00:00:00+00:00",
+    )
+    toolbox = ToolBox(repository=repo)
+    output = toolbox.git_log(limit=5)
+    assert "No commits found" in output

@@ -13,7 +13,13 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from repo import Repository, human_size, is_probably_binary, iter_repo_files
+from repo import (
+    Repository,
+    git_failure_message,
+    human_size,
+    is_probably_binary,
+    iter_repo_files,
+)
 from redaction import redact_secrets
 
 MAX_READ_BYTES = 1_500_000
@@ -36,6 +42,10 @@ NON_PRODUCT_DIR = re.compile(
 )
 CONFIG_EXTENSIONS = (".ini", ".cfg", ".conf")
 MAX_OVERVIEW_CANDIDATES = 15
+CONTAINER_FILE = re.compile(
+    r"(^|/)(Dockerfile[^/]*|Containerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml|Makefile)$",
+    re.IGNORECASE,
+)
 
 INVALID_PATTERN_HINT = (
     "Fix the pattern and retry: escape literal backslashes as \\\\, close character "
@@ -179,7 +189,10 @@ class ToolBox:
     ) -> str:
         raw = (pattern or "").strip()
         if not raw:
-            raise ToolError("search_code requires a non-empty pattern.")
+            raise ToolError(
+                "search_code requires a non-empty pattern. Provide a regular "
+                "expression or a literal substring to search for."
+            )
         if len(raw) > MAX_PATTERN_LENGTH:
             raise ToolError(f"Pattern is too long (max {MAX_PATTERN_LENGTH} characters).")
         expression, mode = _compile_search_pattern(raw, case_sensitive)
@@ -264,10 +277,23 @@ class ToolBox:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ToolError(f"git log failed: {exc}") from exc
-        if completed.returncode != 0:
-            detail = (completed.stderr or "").strip().splitlines()
-            raise ToolError("git log failed: " + (detail[-1] if detail else "unknown error"))
         output = completed.stdout.strip()
+        if completed.returncode != 0:
+            stderr = completed.stderr or completed.stdout or ""
+            lowered = stderr.lower()
+            empty_markers = (
+                "does not have any commits",
+                "bad default revision",
+                "your current branch",
+                "no commits",
+            )
+            if any(marker in lowered for marker in empty_markers):
+                return (
+                    "No commits found in the cloned history: the repository may be "
+                    "empty or its history was not fetched. There is nothing further "
+                    "to review from git history; continue with the files."
+                )
+            raise ToolError(git_failure_message("log", stderr))
         if not output:
             return "No commits found in the cloned history."
         return f"Last {count} commit(s) (newest first):\n{output}"
@@ -322,11 +348,14 @@ class ToolBox:
             "dependency manifests": [],
             "configuration-like files": [],
             "editor/IDE settings": [],
+            "build and container files": [],
         }
         for path in iter_repo_files(self.repository.root):
             relative = self.repository.relative(path)
             if EDITOR_DIR.search(relative):
                 candidates["editor/IDE settings"].append(relative)
+            elif CONTAINER_FILE.search(relative):
+                candidates["build and container files"].append(relative)
             elif DEPENDENCY_MANIFEST.search(relative):
                 candidates["dependency manifests"].append(relative)
             elif not NON_PRODUCT_DIR.search(relative) and (
