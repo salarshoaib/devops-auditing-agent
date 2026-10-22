@@ -26,6 +26,7 @@ htmlcov/
 report*.json
 !sample_report.json
 trace.json
+inj*.json
 
 # Local assignment material
 .cortexkit/
