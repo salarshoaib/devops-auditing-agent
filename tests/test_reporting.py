@@ -357,8 +357,47 @@ def test_branch_reference_is_kept_next_to_a_version_tag():
     assert len(report["violations"]) == 1
 
 
+def test_container_base_image_rule_keeps_category_and_severity():
+    violation = normalise_violation(
+        {
+            "rule_id": "BLD-004",
+            "description": "Base image uses a floating tag",
+            "file": "Dockerfile",
+            "line": 1,
+        },
+        lambda path: True,
+    )
+    assert violation is not None
+    assert violation["category"] == "build_release"
+    assert violation["severity"] == "medium"
+    assert (violation["file"], violation["line"]) == ("Dockerfile", 1)
+
+
+def test_container_root_user_rule_keeps_category_and_severity():
+    violation = normalise_violation(
+        {
+            "rule_id": "SEC-011",
+            "description": "Container runs as root",
+            "file": "Dockerfile",
+            "line": 3,
+        },
+        lambda path: True,
+    )
+    assert violation is not None
+    assert violation["category"] == "security"
+    assert violation["severity"] == "medium"
+    assert (violation["file"], violation["line"]) == ("Dockerfile", 3)
+
+
 @pytest.mark.parametrize(
-    "prefix", ["Health check warning / ", "warning: ", "note: ", "Warning - "]
+    "prefix",
+    [
+        "warning: ",
+        "note: ",
+        "info - ",
+        "finding: ",
+        "Health check warning / ",
+    ],
 )
 def test_reporting_prefixes_are_stripped(prefix):
     finding = dict(_action_finding("SEC-006", "main"), description=f"{prefix}Action follows main")

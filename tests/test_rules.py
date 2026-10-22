@@ -62,7 +62,18 @@ def test_rule_ids_are_unique():
 
 @pytest.mark.parametrize(
     "rule_id",
-    ["CI-005", "SEC-008", "SEC-009", "SEC-010", "CFG-002", "CFG-004", "DEP-002", "SEC-006"],
+    [
+        "CI-005",
+        "SEC-008",
+        "SEC-009",
+        "SEC-010",
+        "SEC-011",
+        "BLD-004",
+        "CFG-002",
+        "CFG-004",
+        "DEP-002",
+        "SEC-006",
+    ],
 )
 def test_defect_classes_have_distinct_catalog_entries(rule_id):
     rule = RULES_BY_ID[rule_id]

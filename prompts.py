@@ -79,6 +79,12 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   string or URL containing a username and password is SEC-010. A committed editor
   directory such as `.vscode/` or `.idea/` holding machine-specific paths is CFG-002;
   report CFG-001 only for machine paths outside editor settings.
+- Container and build files: read Dockerfile-style files and compose files in
+  full. A base image on a floating tag (`latest`, or any tag without a version) is
+  BLD-004; a container that never drops root (no `USER` directive, or `USER root`)
+  is SEC-011; a credential passed as an `ENV` or `ARG` value in a build file is
+  SEC-001 - report the variable name and line, never the value. Report each of
+  these separately.
 - Read dependency manifests line by line. For an application whose
   `requirements.txt` lists entries without exact pins (bare names, or ranges like `>=2.0`),
   report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when

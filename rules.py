@@ -320,6 +320,22 @@ RULES: tuple[Rule, ...] = (
         "No release or versioning process",
         "Document a versioning and release process (tags/changelog).",
     ),
+    Rule(
+        "BLD-004",
+        "build_release",
+        "medium",
+        "Container base image uses a floating tag instead of a pinned version",
+        "Pin the base image to an explicit version tag or digest instead of a "
+        "floating tag such as `latest`.",
+    ),
+    Rule(
+        "SEC-011",
+        "security",
+        "medium",
+        "Container image runs as root",
+        "Create an unprivileged user and set `USER` to it instead of running the "
+        "container as root.",
+    ),
 )
 
 RULES_BY_ID: dict[str, Rule] = {rule.rule_id: rule for rule in RULES}
