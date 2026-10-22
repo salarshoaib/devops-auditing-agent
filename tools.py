@@ -21,6 +21,26 @@ MAX_READ_LINES = 600
 MAX_SEARCH_FILE_BYTES = 2_000_000
 MAX_PATTERN_LENGTH = 300
 DEFAULT_LIST_LIMIT = 250
+REGEX_METACHARACTERS = frozenset("\\^$.*+?()[]{}|")
+
+DEPENDENCY_MANIFEST = re.compile(
+    r"(^|/)(requirements[^/]*\.txt|constraints[^/]*\.txt|pyproject\.toml|setup\.py|"
+    r"setup\.cfg|Pipfile|package\.json|go\.mod|Cargo\.toml|Gemfile|composer\.json|"
+    r"pom\.xml|build\.gradle(?:\.kts)?|pubspec\.yaml|environment\.ya?ml)$"
+)
+CONFIG_LIKE = re.compile(r"(^|/)(config|configs|settings|conf|configuration)(\.|/|$)", re.I)
+EDITOR_DIR = re.compile(r"(^|/)(\.vscode|\.idea|\.fleet|\.vs)/")
+ENV_LIKE = re.compile(r"(^|/)\.env(\.[^/]+)?$")
+NON_PRODUCT_DIR = re.compile(
+    r"(^|/)(docs?|tests?|spec|specs|examples?|samples?|fixtures?|vendor|node_modules|third_party)/"
+)
+CONFIG_EXTENSIONS = (".ini", ".cfg", ".conf")
+MAX_OVERVIEW_CANDIDATES = 15
+
+INVALID_PATTERN_HINT = (
+    "Fix the pattern and retry: escape literal backslashes as \\\\, close character "
+    "classes, and balance parentheses or braces."
+)
 
 
 class ToolError(RuntimeError):
@@ -162,12 +182,7 @@ class ToolBox:
             raise ToolError("search_code requires a non-empty pattern.")
         if len(raw) > MAX_PATTERN_LENGTH:
             raise ToolError(f"Pattern is too long (max {MAX_PATTERN_LENGTH} characters).")
-        try:
-            expression = re.compile(raw, 0 if case_sensitive else re.IGNORECASE)
-            used_regex = True
-        except re.error:
-            expression = re.compile(re.escape(raw), 0 if case_sensitive else re.IGNORECASE)
-            used_regex = False
+        expression, mode = _compile_search_pattern(raw, case_sensitive)
 
         base = self._resolve(path)
         if not base.exists():
@@ -211,7 +226,6 @@ class ToolBox:
                         truncated = True
                         break
 
-        mode = "regex" if used_regex else "literal (invalid regex)"
         if not matches:
             return (
                 f"No matches for {raw!r} ({mode}) in {scanned} file(s)"
@@ -296,6 +310,32 @@ class ToolBox:
             )
         )
         return result
+
+    # -- candidate discovery --------------------------------------------
+    def candidate_files(self) -> dict[str, list[str]]:
+        """Files worth inspecting, derived only from the file tree.
+
+        These are pointers for the model, never findings: each still has to be
+        opened and judged before anything is reported.
+        """
+        candidates: dict[str, list[str]] = {
+            "dependency manifests": [],
+            "configuration-like files": [],
+            "editor/IDE settings": [],
+        }
+        for path in iter_repo_files(self.repository.root):
+            relative = self.repository.relative(path)
+            if EDITOR_DIR.search(relative):
+                candidates["editor/IDE settings"].append(relative)
+            elif DEPENDENCY_MANIFEST.search(relative):
+                candidates["dependency manifests"].append(relative)
+            elif not NON_PRODUCT_DIR.search(relative) and (
+                CONFIG_LIKE.search(relative)
+                or relative.endswith(CONFIG_EXTENSIONS)
+                or ENV_LIKE.search(relative)
+            ):
+                candidates["configuration-like files"].append(relative)
+        return {label: sorted(paths) for label, paths in candidates.items()}
 
     # -- initial observation --------------------------------------------
     def _manifest_signals(self) -> list[str]:
@@ -424,6 +464,18 @@ class ToolBox:
             parts.append(f"Workflow files: {', '.join(workflows)}")
             parts.append("Note: workflows were not read yet; inspect the ones relevant to your next step.")
         parts.extend(self._manifest_signals())
+        candidates = self.candidate_files()
+        listed = []
+        for label, paths in candidates.items():
+            if not paths:
+                continue
+            shown = ", ".join(paths[:MAX_OVERVIEW_CANDIDATES])
+            if len(paths) > MAX_OVERVIEW_CANDIDATES:
+                shown += f" (+{len(paths) - MAX_OVERVIEW_CANDIDATES} more)"
+            listed.append(f"- {label}: {shown}")
+        if listed:
+            parts.append("Files worth inspecting (candidates from the file tree, not findings):")
+            parts.extend(listed)
         parts.append(
             "Note: file presence alone is not evidence; confirm contents with read_file or search_code before reporting."
         )
@@ -453,6 +505,19 @@ def _iter_files(base: Path):
             if candidate.is_symlink():
                 continue
             yield candidate
+
+
+def _compile_search_pattern(raw: str, case_sensitive: bool) -> tuple[re.Pattern[str], str]:
+    """Compile a search pattern, or treat it as a literal when it has no metacharacters."""
+    flags = 0 if case_sensitive else re.IGNORECASE
+    if not any(character in REGEX_METACHARACTERS for character in raw):
+        return re.compile(re.escape(raw), flags), "literal substring"
+    try:
+        return re.compile(raw, flags), "regex"
+    except re.error as exc:
+        raise ToolError(
+            f"Invalid regular expression {raw!r}: {exc}. {INVALID_PATTERN_HINT}"
+        ) from exc
 
 
 def _matches(relative: str, pattern: str) -> bool:
@@ -506,7 +571,7 @@ def tool_schemas() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "search_code",
-                "description": "Regex search across repository text files. Returns path:line: snippet.",
+                "description": "Search repository text files. Case-insensitive by default and matches path:line: snippet. A pattern without regex metacharacters is a plain substring search; an invalid regex returns an error you must fix.",
                 "parameters": {
                     "type": "object",
                     "properties": {

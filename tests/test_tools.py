@@ -72,14 +72,32 @@ def test_search_code_glob(toolbox):
     assert "No matches" in output
 
 
-def test_search_code_literal_fallback(toolbox):
-    output = toolbox.search_code("print(")
+def test_search_code_plain_pattern_is_a_substring_search(toolbox):
+    output = toolbox.search_code("return 1")
+    assert "app.py:7" in output
+    assert "literal substring" in output
+
+
+def test_search_code_is_case_insensitive_by_default(toolbox):
+    output = toolbox.search_code("debug")
+    assert "app.py:3" in output
+
+
+def test_search_code_uppercase_pattern_matches_lowercase_text(toolbox):
+    output = toolbox.search_code("DEBUG")
     assert "app.py:6" in output
 
 
-def test_search_code_invalid_regex_falls_back_to_literal(toolbox):
-    output = toolbox.search_code("C:\\Users")
-    assert "config.py" in output
+def test_search_code_invalid_regex_returns_an_error(toolbox):
+    result = toolbox.execute("search_code", {"pattern": "C:\\Users"})
+    assert result.startswith("ERROR:")
+    assert "Invalid regular expression" in result
+    assert "Fix the pattern" in result
+
+
+def test_search_code_windows_path_pattern(toolbox):
+    output = toolbox.search_code(r"[A-Za-z]:[\\/]+Users")
+    assert "config.py:1" in output
 
 
 def test_search_code_redacts_secret_values(toolbox):
@@ -121,6 +139,31 @@ def test_duplicate_calls_are_cached(toolbox):
 def test_unknown_tool_is_an_error(toolbox):
     result = toolbox.execute("delete_repo", {})
     assert result.startswith("ERROR:")
+
+
+def test_candidate_files_are_tree_derived(toolbox, sample_repo):
+    root = sample_repo.root
+    (root / "requirements-dev.txt").write_text("pytest\n", encoding="utf-8")
+    (root / ".vscode").mkdir()
+    (root / ".vscode" / "settings.json").write_text("{}\n", encoding="utf-8")
+    (root / "tests" / "settings_helper.py").write_text("value = 1\n", encoding="utf-8")
+
+    candidates = toolbox.candidate_files()
+
+    assert "requirements.txt" in candidates["dependency manifests"]
+    assert "requirements-dev.txt" in candidates["dependency manifests"]
+    assert "config.py" in candidates["configuration-like files"]
+    assert ".vscode/settings.json" in candidates["editor/IDE settings"]
+    flattened = [path for paths in candidates.values() for path in paths]
+    assert not any(path.startswith("tests/") for path in flattened)
+
+
+def test_overview_lists_candidates_but_labels_them_as_not_findings(toolbox):
+    overview = toolbox.overview()
+    assert "Files worth inspecting" in overview
+    assert "not findings" in overview
+    assert "requirements.txt" in overview
+    assert "config.py" in overview
 
 
 def test_overview_reports_markers(toolbox):
