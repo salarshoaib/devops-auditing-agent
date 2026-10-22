@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repo import Repository, human_size, is_probably_binary, iter_repo_files
-from secrets import redact_secrets
+from redaction import redact_secrets
 
 MAX_READ_BYTES = 1_500_000
 MAX_READ_LINES = 600

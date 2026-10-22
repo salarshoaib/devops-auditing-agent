@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from repo import RepoTarget, Repository
-from secrets import REDACTED, redact_secrets
+from redaction import REDACTED, redact_secrets
 from tools import ToolBox, tool_schemas
 
 

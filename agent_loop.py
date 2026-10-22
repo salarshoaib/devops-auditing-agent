@@ -16,7 +16,7 @@ from prompts import (
     SYSTEM_PROMPT,
 )
 from reporting import build_report
-from secrets import redact_secrets
+from redaction import redact_secrets
 from tools import ToolBox, is_submission_tool, tool_schemas
 
 MAX_TOOL_CALLS_PER_STEP = 8

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from rules import RULES_BY_ID, SEVERITIES, SEVERITY_RANK, default_severity, rule_recommendation
-from secrets import redact_secrets
+from redaction import redact_secrets
 
 RULE_ID_SEARCH = re.compile(r"\b([A-Z]{2,4})[-_ ]?(\d{3})\b")
 RULE_FAMILIES = (
