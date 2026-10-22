@@ -309,6 +309,63 @@ def test_empty_report_is_valid():
     assert report == {"repository": "https://github.com/acme/demo", "violations": []}
 
 
+def _action_finding(rule_id: str, reference: str, description: str = "Action reference follows a moving ref") -> dict:
+    return {
+        "rule_id": rule_id,
+        "category": "security",
+        "severity": "low",
+        "file": ".github/workflows/ci.yml",
+        "line": 9,
+        "description": description,
+        "evidence": f"`uses: actions/checkout@{reference}` on line 9",
+        "recommendation": "Use a released version.",
+    }
+
+
+@pytest.mark.parametrize("rule_id", ["SEC-006", "CI-004"])
+@pytest.mark.parametrize("reference", ["v4", "v4.1", "1.2.3"])
+def test_version_tagged_action_reference_is_dropped(rule_id, reference):
+    report = build_report(
+        "https://github.com/acme/demo", [_action_finding(rule_id, reference)], _exists
+    )
+    assert report["violations"] == []
+
+
+@pytest.mark.parametrize("rule_id", ["SEC-006", "CI-004"])
+@pytest.mark.parametrize("reference", ["main", "master", "develop", "dev", "trunk", "HEAD", "latest"])
+def test_branch_action_reference_is_kept(rule_id, reference):
+    report = build_report(
+        "https://github.com/acme/demo", [_action_finding(rule_id, reference)], _exists
+    )
+    assert len(report["violations"]) == 1
+    assert report["violations"][0]["rule_id"] == rule_id
+
+
+def test_sha_pinned_action_reference_is_dropped():
+    reference = "8f4b7f84864484a7bf31766abe9204da3cbe65b3"
+    assert len(reference) == 40
+    report = build_report(
+        "https://github.com/acme/demo", [_action_finding("SEC-006", reference)], _exists
+    )
+    assert report["violations"] == []
+
+
+def test_branch_reference_is_kept_next_to_a_version_tag():
+    finding = _action_finding("SEC-006", "v4", description="Review `pkg@v4` and `other@main`")
+    finding["evidence"] = "`uses: actions/checkout@v4` also `uses: vendor/tool@main`"
+    report = build_report("https://github.com/acme/demo", [finding], _exists)
+    assert len(report["violations"]) == 1
+
+
+@pytest.mark.parametrize(
+    "prefix", ["Health check warning / ", "warning: ", "note: ", "Warning - "]
+)
+def test_reporting_prefixes_are_stripped(prefix):
+    finding = dict(_action_finding("SEC-006", "main"), description=f"{prefix}Action follows main")
+    report = build_report("https://github.com/acme/demo", [finding], _exists)
+    assert report["violations"][0]["description"] == "Action follows main"
+
+
 def test_write_report_creates_valid_json(tmp_path):
     report = {"repository": "https://github.com/acme/demo", "violations": []}
     destination = write_report(tmp_path / "nested" / "report.json", report)

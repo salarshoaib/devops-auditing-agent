@@ -164,8 +164,10 @@ RULES: tuple[Rule, ...] = (
         "CI-004",
         "ci_cd",
         "low",
-        "Deprecated or unmaintained runner/action versions",
-        "Upgrade to supported runner images and current major action versions.",
+        "Runner or action reference follows a moving branch instead of a release",
+        "Point the reference at a released version tag (for example v4) or a commit SHA. "
+        "Version tags such as v4, v4.1 or 1.2.3 are acceptable and must NOT be reported. "
+        "Full-SHA pinning is a hardening suggestion only and is never a violation.",
     ),
     Rule(
         "CI-005",
@@ -214,8 +216,11 @@ RULES: tuple[Rule, ...] = (
         "SEC-006",
         "security",
         "low",
-        "Third-party actions pinned to a mutable tag or branch",
-        "Pin third-party actions to a commit SHA.",
+        "Action reference points at a moving branch instead of a version tag or SHA",
+        "Reference a released version tag (for example v4) or a commit SHA instead of a "
+        "moving branch such as main or master. Version tags such as v4, v4.1 or 1.2.3 "
+        "are acceptable and must NOT be reported. Full-SHA pinning is a hardening "
+        "suggestion only and is never a violation.",
     ),
     Rule(
         "SEC-007",

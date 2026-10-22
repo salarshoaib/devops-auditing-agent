@@ -24,9 +24,45 @@ REPO_WIDE_RULES = {"TST-001", "CI-001", "HYG-001", "COL-002", "BLD-003", "DEP-00
 MAX_VIOLATIONS = 40
 GENERIC_RECOMMENDATION = "Review the finding and remediate it following the linked evidence."
 
+ACTION_PIN_RULES = {"SEC-006", "CI-004"}
+ACTION_REFERENCE = re.compile(r"@([A-Za-z0-9][A-Za-z0-9._/-]*)")
+VERSION_TAG = re.compile(r"^v?\d+(?:\.\d+)*$")
+COMMIT_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+DESCRIPTION_PREFIX = re.compile(
+    r"^\s*(?:health\s*check(?:\s+warning)?|warning|note|finding|info)\s*[:/\-]\s*",
+    re.IGNORECASE,
+)
+
 
 class ReportError(ValueError):
     """Raised when the report cannot be serialised."""
+
+
+def _strip_description_prefix(text: str) -> str:
+    """Drop reporting-style prefixes such as 'Health check warning /'."""
+    original = text
+    previous = None
+    while previous != text:
+        previous = text
+        text = DESCRIPTION_PREFIX.sub("", text, count=1).strip()
+    return text or original
+
+
+def _version_only_action_refs(text: str) -> bool:
+    """True when every action reference in ``text`` is a version tag or a SHA.
+
+    A moving branch name (main, master, develop, dev, trunk, HEAD, latest) or any
+    other ref keeps the finding, so only references that are safely versioned are
+    filtered out.
+    """
+    refs = [
+        match.group(1).rstrip(".,;:)]}`'\"")
+        for match in ACTION_REFERENCE.finditer(text)
+    ]
+    refs = [ref for ref in refs if ref]
+    if not refs:
+        return False
+    return all(VERSION_TAG.match(ref) or COMMIT_SHA.match(ref) for ref in refs)
 
 
 def _clean_text(value: Any) -> str:
@@ -85,6 +121,7 @@ def normalise_violation(
     description = _clean_text(raw.get("description") or raw.get("title"))
     if not description:
         return None
+    description = _strip_description_prefix(description)
 
     rule_id = _normalise_rule_id(raw.get("rule_id") or raw.get("id"))
     known_rule = RULES_BY_ID.get(rule_id)
@@ -123,6 +160,14 @@ def normalise_violation(
     recommendation = _clean_text(raw.get("recommendation"))
     if not recommendation:
         recommendation = rule_recommendation(rule_id) or GENERIC_RECOMMENDATION
+
+    if rule_id in ACTION_PIN_RULES and _version_only_action_refs(f"{description} {evidence}"):
+        if notes is not None:
+            notes.append(
+                f"Dropped {rule_id}: the action reference is a version tag or commit SHA, "
+                "which are acceptable."
+            )
+        return None
 
     return {
         "rule_id": rule_id,
