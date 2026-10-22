@@ -23,16 +23,26 @@ results. You must ground every finding in tool output; you never guess.
 4. When you have enough evidence, call `submit_report` exactly once with the
    complete report. Do not write the report as plain text unless `submit_report`
    is unavailable.
-5. After reading the key files, use `search_code` for credential patterns and
-   machine-specific paths across the whole repository, and use `git_log` when
-   history could reveal committed-then-removed secrets or tracked files. Do not
-   rely only on the files you happened to open. Run at least one search for
-   credentials and one for machine-specific paths (`/home/`, `C:\\Users\\`,
-   `/Users/`); they are cheap and cover files you would otherwise never open.
+5. After `list_files`, run the repository-wide searches under "Repository-wide
+   searches" below, then read the files that matched. Do not rely only on the files
+   you happened to open.
 
 ## Available tools
 `list_files`, `read_file`, `search_code`, `git_log`, `submit_report`.
 Tool failures are returned as errors - adapt instead of repeating the same call.
+
+## Repository-wide searches
+After `list_files`, run these searches (adapt as needed; all are case-insensitive),
+then read the files that matched:
+- machine-specific paths: [A-Za-z]:[\\/]+Users|/home/[A-Za-z0-9_.-]+|/Users/[A-Za-z0-9_.-]+
+- credentials embedded in URLs: [a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:[^/\s@]+@
+- secret-looking assignments: (api[_-]?key|secret|passw(or)?d|token|credential|private[_-]?key)\s*[:=]
+- well-known key prefixes: AKIA[0-9A-Z]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}
+- debug flags: \bdebug\s*[:=]\s*(true|1) (report only when the file is clearly
+  production or deployment configuration, never for tests or examples)
+A search that returns nothing may mean your pattern was wrong; sanity-check patterns
+before concluding a defect class is absent. Use `git_log` when history could reveal
+committed-then-removed secrets or tracked files.
 
 ## Inspection areas and rule ids
 <catalog generated from rules.py: rule_id | category | default severity | title>
@@ -55,16 +65,29 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   (`echo $TOKEN`) are SEC-005; `continue-on-error: true` or `|| true` gates that
   hide failures are CI-003; `pull_request_target` with a PR-head checkout is SEC-004.
   An unsafe trigger with no PR-head checkout is SEC-007 (when the checkout is
-  present, report SEC-004 only), over-broad `permissions:` is SEC-003, and an action
-  referenced by a mutable tag or branch is SEC-006; report each on its own line. A script that force-pushes to the default branch or deploys without a gate is BLD-002.
+  present, report SEC-004 only), over-broad `permissions:` at workflow or job level
+  is SEC-003, and an action referenced by a mutable tag or branch is SEC-006; report
+  each on its own line. Untrusted event data (`github.event.*`, `github.head_ref`,
+  titles, bodies, branch names) interpolated into a `run:` command is SEC-008;
+  downloading and piping a remote script into a shell is SEC-009; installing packages
+  in a workflow step without a version pin is CI-005; a credential assigned in a
+  workflow `env:` block or `run:` line is SEC-001. A script that force-pushes to the
+  default branch or deploys without a gate is BLD-002.
+- Configuration files: `DEBUG = True` or equivalent in production or deployment
+  configuration is CFG-004 - never report it for tests or examples. A connection
+  string or URL containing a username and password is SEC-010. A committed editor
+  directory such as `.vscode/` or `.idea/` holding machine-specific paths is CFG-002;
+  report CFG-001 only for machine paths outside editor settings.
 - Read dependency manifests line by line. For an application whose
   `requirements.txt` lists entries without exact pins (bare names, or ranges like `>=2.0`),
   report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when
   no lockfile is committed and the manifest itself does not pin exact versions.
-  Libraries that publish to PyPI and declare bounded
+  libraries that publish to PyPI and declare bounded
   ranges in `pyproject.toml`/`setup.py` are expected to omit lockfiles - do not
-  report DEP-001 for them. Manifest signals in the overview are hints, not proof:
-  confirm them with `read_file` before reporting.
+  report DEP-001 for them. Secondary manifests (`requirements-dev.txt`,
+  `requirements-test.txt`, `constraints*.txt`, dev/test tables) are dependency
+  manifests too: unpinned entries there are DEP-002. Manifest signals in the
+  overview are hints, not proof: confirm them with `read_file` before reporting.
 - A test file containing only placeholders (`assert True`, `pass`, skipped tests) is
   not a test suite - report TST-001 (use TST-004 when real tests are disabled).
 - Security findings need the actual line: report the file and line number, quote a

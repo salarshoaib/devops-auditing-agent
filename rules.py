@@ -77,7 +77,7 @@ RULES: tuple[Rule, ...] = (
         "DEP-002",
         "dependency_management",
         "medium",
-        "Unpinned or unbounded dependency constraint",
+        "Unpinned or unbounded dependency constraint in any manifest",
         "Pin or bound versions (==, ~=, >=,<) so installs are reproducible.",
     ),
     Rule(
@@ -167,6 +167,13 @@ RULES: tuple[Rule, ...] = (
         "Deprecated or unmaintained runner/action versions",
         "Upgrade to supported runner images and current major action versions.",
     ),
+    Rule(
+        "CI-005",
+        "ci_cd",
+        "medium",
+        "Packages installed in CI without version pins",
+        "Pin the installed versions (or install from a lockfile) so CI runs are reproducible.",
+    ),
     # Security ---------------------------------------------------------------
     Rule(
         "SEC-001",
@@ -218,6 +225,30 @@ RULES: tuple[Rule, ...] = (
         "Trigger on `pull_request` instead of `pull_request_target`/`workflow_run`, "
         "or keep the privileged job limited to trusted events.",
     ),
+    Rule(
+        "SEC-008",
+        "security",
+        "high",
+        "Untrusted event data interpolated into a workflow shell command",
+        "Pass untrusted values through environment variables and quote them, or use a "
+        "script with input sanitising instead of `${{ github.event... }}` inside `run:`.",
+    ),
+    Rule(
+        "SEC-009",
+        "security",
+        "high",
+        "Remote script downloaded and piped into a shell",
+        "Download the script, verify its checksum, and review it before executing; "
+        "prefer a pinned, trusted tool instead of `curl ... | bash`.",
+    ),
+    Rule(
+        "SEC-010",
+        "security",
+        "critical",
+        "Connection string or URL with embedded credentials",
+        "Move credentials out of connection strings into environment variables or a "
+        "secrets manager, and rotate the exposed values.",
+    ),
     # Configuration ----------------------------------------------------------
     Rule(
         "CFG-001",
@@ -230,8 +261,8 @@ RULES: tuple[Rule, ...] = (
         "CFG-002",
         "configuration",
         "medium",
-        "Local IDE or environment settings committed",
-        "Ignore editor-local settings and commit shared templates instead.",
+        "Committed IDE/editor settings with machine-specific paths",
+        "Ignore editor-local settings, commit shared templates only, and use portable paths.",
     ),
     Rule(
         "CFG-003",
@@ -244,8 +275,8 @@ RULES: tuple[Rule, ...] = (
         "CFG-004",
         "configuration",
         "medium",
-        "Debug mode enabled by default",
-        "Default to debug off and enable it explicitly for local development.",
+        "Debug mode enabled in production or deployment configuration",
+        "Default to debug off and enable it explicitly for local development only.",
     ),
     # Collaboration ----------------------------------------------------------
     Rule(

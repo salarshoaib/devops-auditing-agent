@@ -22,6 +22,13 @@ def test_system_prompt_policy_lines_are_documented():
         "either HYG-004 or CFG-002",
         "A healthy repository must produce an empty violations list.",
         "Coverage check before submitting",
+        "Repository-wide searches",
     ):
+        assert line in DOC
+        assert line in prompts.SYSTEM_PROMPT
+
+
+def test_search_patterns_are_documented_verbatim():
+    for line in prompts.SEARCH_GUIDANCE.splitlines():
         assert line in DOC
         assert line in prompts.SYSTEM_PROMPT
