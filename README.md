@@ -105,7 +105,11 @@ pip install -r requirements.txt
 Copy the template and fill in your credentials:
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # macOS / Linux
+```
+
+```powershell
+Copy-Item .env.example .env   # Windows
 ```
 
 | Variable | Required | Default | Purpose |
