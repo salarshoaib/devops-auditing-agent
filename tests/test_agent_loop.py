@@ -170,3 +170,50 @@ def test_agent_normalises_bad_paths(sample_repo):
     violation = result.report["violations"][0]
     assert violation["file"] is None
     assert violation["line"] is None
+
+
+def test_agent_nudges_workflow_review_before_accepting(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    assert result.steps == 3
+    assert [entry["tool"] for entry in result.trace] == [
+        "read_file",
+        "submit_report",
+        "submit_report",
+    ]
+    assert [entry["error"] for entry in result.trace] == [False, True, False]
+    assert "triggers" in result.trace[1]["result_preview"]
+    assert result.report["violations"] == []
+
+
+def test_agent_skips_workflow_nudge_when_workflow_has_a_finding(sample_repo):
+    workflow_finding = dict(
+        VIOLATION,
+        rule_id="SEC-003",
+        category="security",
+        severity="high",
+        file=".github/workflows/ci.yml",
+        line=3,
+        description="Workflow grants write-all permissions",
+        evidence="permissions: write-all",
+    )
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    assert result.steps == 2
+    assert [entry["tool"] for entry in result.trace] == ["read_file", "submit_report"]
+    assert result.report["violations"][0]["rule_id"] == "SEC-003"

@@ -210,6 +210,14 @@ RULES: tuple[Rule, ...] = (
         "Third-party actions pinned to a mutable tag or branch",
         "Pin third-party actions to a commit SHA.",
     ),
+    Rule(
+        "SEC-007",
+        "security",
+        "high",
+        "Workflow trigger grants untrusted code a privileged context",
+        "Trigger on `pull_request` instead of `pull_request_target`/`workflow_run`, "
+        "or keep the privileged job limited to trusted events.",
+    ),
     # Configuration ----------------------------------------------------------
     Rule(
         "CFG-001",

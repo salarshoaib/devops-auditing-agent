@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -23,6 +24,17 @@ MAX_TOOL_CALLS_PER_STEP = 8
 MAX_TOOL_OUTPUT_CHARS = 24000
 MAX_STEPS_HARD_LIMIT = 80
 MAX_EVIDENCE_REPAIRS = 1
+MAX_WORKFLOW_NUDGES = 1
+
+_WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
+
+WORKFLOW_REVIEW_PROMPT = (
+    "Before submitting, re-check the workflow file(s) you read: {files}. "
+    "For each, confirm separately: (1) triggers - which events run it and whether "
+    "untrusted input is involved; (2) permissions - whether they are least-privilege; "
+    "(3) action pinning - whether each action is pinned to a commit SHA. "
+    "If you already checked all three, call submit_report again with the same report."
+)
 
 
 @dataclass
@@ -52,6 +64,8 @@ class AuditorAgent:
         self.notes: list[str] = []
         self.trace: list[dict[str, Any]] = []
         self.evidence_repairs = 0
+        self.workflow_nudges = 0
+        self._workflow_files_read: set[str] = set()
         self._messages: list[dict[str, Any]] = []
         self._schemas = tool_schemas()
 
@@ -171,6 +185,33 @@ class AuditorAgent:
                         }
                     )
                     continue
+                workflows = self._workflow_review_gap(arguments)
+                if workflows and self.workflow_nudges < MAX_WORKFLOW_NUDGES:
+                    self.workflow_nudges += 1
+                    self.trace.append(
+                        {
+                            "step": self.steps,
+                            "tool": "submit_report",
+                            "arguments": {"violations": "rejected (workflow review)"},
+                            "result_preview": (
+                                "rejected: workflow review nudge for "
+                                f"{len(workflows)} file(s): triggers, permissions, "
+                                "action pinning"
+                            ),
+                            "error": True,
+                        }
+                    )
+                    self._messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id") or "submit",
+                            "name": name,
+                            "content": WORKFLOW_REVIEW_PROMPT.format(
+                                files=", ".join(workflows)
+                            ),
+                        }
+                    )
+                    continue
                 report = self._build_submitted_report(arguments)
                 if report is not None:
                     self.trace.append(
@@ -207,6 +248,8 @@ class AuditorAgent:
             if "__malformed_arguments__" in arguments:
                 output = "ERROR: tool arguments were not valid JSON. Retry with a JSON object."
             else:
+                if name == "read_file":
+                    self._note_workflow_read(arguments.get("path"))
                 output = self.toolbox.execute(name, arguments, step=self.steps)
 
             self.trace.append(
@@ -233,12 +276,8 @@ class AuditorAgent:
         return None
 
     def _violations_missing_evidence(self, arguments: dict[str, Any]) -> list[str]:
-        violations = arguments.get("violations")
-        if violations is None and isinstance(arguments.get("report"), dict):
-            violations = arguments["report"].get("violations")
-        if isinstance(violations, dict):
-            violations = [violations]
-        if not isinstance(violations, list):
+        violations = self._raw_violation_items(arguments)
+        if violations is None:
             return []
         missing = []
         for item in violations:
@@ -248,13 +287,42 @@ class AuditorAgent:
                 missing.append(str(item.get("rule_id") or "unknown rule"))
         return missing
 
-    def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
+    def _raw_violation_items(self, arguments: dict[str, Any]) -> list[Any] | None:
         violations = arguments.get("violations")
         if violations is None and isinstance(arguments.get("report"), dict):
             violations = arguments["report"].get("violations")
         if isinstance(violations, dict):
-            violations = [violations]
-        if not isinstance(violations, list):
+            return [violations]
+        return violations if isinstance(violations, list) else None
+
+    def _note_workflow_read(self, path: Any) -> None:
+        text = _normalise_repo_path(path)
+        if _WORKFLOW_PATH.match(text):
+            self._workflow_files_read.add(text)
+
+    def _workflow_review_gap(self, arguments: dict[str, Any]) -> list[str]:
+        """Return workflow files read without any workflow-anchored finding.
+
+        This is a generic prompt-level nudge, not a finding: a healthy workflow
+        produces no violation, so the model can resubmit the same report after
+        confirming triggers, permissions and action pinning.
+        """
+        if not self._workflow_files_read or self.workflow_nudges >= MAX_WORKFLOW_NUDGES:
+            return []
+        for item in self._raw_violation_items(arguments) or []:
+            if not isinstance(item, dict):
+                continue
+            file = _normalise_repo_path(item.get("file"))
+            if file.startswith(".github/workflows/"):
+                return []
+            text = f"{item.get('description', '')} {item.get('evidence', '')}".lower()
+            if any(path.lower() in text for path in self._workflow_files_read):
+                return []
+        return sorted(self._workflow_files_read)
+
+    def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        violations = self._raw_violation_items(arguments)
+        if violations is None:
             return None
         return build_report(
             self.toolbox.repository.target.https_url.replace(".git", ""),
@@ -355,3 +423,11 @@ class AuditorAgent:
 def _preview(text: str, limit: int) -> str:
     compact = " ".join((text or "").split())
     return compact if len(compact) <= limit else compact[: limit - 3] + "..."
+
+
+def _normalise_repo_path(value: Any) -> str:
+    """Return a repository-relative POSIX path without a leading ``./``."""
+    text = str(value or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return text.lstrip("/")
