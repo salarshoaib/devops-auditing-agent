@@ -86,3 +86,16 @@ def test_two_credentials_same_file_survive():
     ]
 
     assert len(_run(raws)) == 2
+
+
+def test_three_distinct_workflow_defects_survive():
+    raws = [
+        _v("CI-002", WF, 2, "Workflow uses pull_request_target trigger"),
+        _v("SEC-003", WF, 3, "Workflow grants write-all permissions"),
+        _v("CI-004", WF, 8, "Action checkout pinned to a mutable version"),
+    ]
+
+    violations = _run(raws)
+
+    assert len(violations) == 3
+    assert sorted(item["rule_id"] for item in violations) == ["CI-002", "CI-004", "SEC-003"]
