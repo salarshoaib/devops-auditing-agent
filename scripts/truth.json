@@ -1,38 +1,85 @@
 [
   {
     "file": ".github/workflows/pr-bot.yml",
-    "keywords": ["pull_request_target"]
+    "keywords": [
+      "pull_request_target"
+    ]
   },
   {
     "file": ".github/workflows/pr-bot.yml",
-    "keywords": ["write-all", "permission"]
+    "keywords": [
+      "write-all",
+      "permission"
+    ]
   },
   {
     "file": ".github/workflows/pr-bot.yml",
-    "keywords": ["master", "pin", "@v"]
+    "keywords": [
+      "master",
+      "pin",
+      "@v"
+    ]
   },
   {
     "file": ".github/workflows/tests-extra.yml",
-    "keywords": ["continue-on-error", "|| true"]
+    "keywords": [
+      "|| true"
+    ]
+  },
+  {
+    "file": ".github/workflows/tests-extra.yml",
+    "keywords": [
+      "continue-on-error"
+    ]
   },
   {
     "file": "app/settings_local.py",
-    "keywords": ["token", "credential", "secret"]
+    "keywords": [
+      "token",
+      "credential",
+      "secret"
+    ]
   },
   {
     "file": "app/paths.py",
-    "keywords": ["path", "machine", "hardcoded"]
+    "keywords": [
+      "home",
+      "path",
+      "machine",
+      "hardcoded"
+    ]
+  },
+  {
+    "file": "app/paths.py",
+    "keywords": [
+      "users",
+      "path",
+      "machine",
+      "hardcoded"
+    ]
   },
   {
     "file": ".env",
-    "keywords": ["env", "committed", "secret"]
+    "keywords": [
+      "env",
+      "committed",
+      "secret"
+    ]
   },
   {
     "file": "build/out.bin",
-    "keywords": ["build", "generated", "tracked"]
+    "keywords": [
+      "build",
+      "generated",
+      "tracked"
+    ]
   },
   {
     "file": "__pycache__/a.pyc",
-    "keywords": ["pycache", "generated", "tracked"]
+    "keywords": [
+      "pycache",
+      "generated",
+      "tracked"
+    ]
   }
 ]
