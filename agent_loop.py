@@ -36,6 +36,10 @@ MAX_EVIDENCE_REPAIRS = 1
 MAX_WORKFLOW_NUDGES = 1
 MAX_WORKFLOW_FILES_LISTED = 15
 MAX_COVERAGE_NUDGES = 1
+MAX_HISTORY_NUDGES = 1
+# When this many steps or fewer remain, the cheap history nudge is served before
+# any further required-reading nudges, so a late run still inspects the history.
+STEP_BUDGET_PRIORITY_STEPS = 3
 MAX_COVERAGE_FILES_LISTED = 12
 MAX_REQUIRED_FILES_LISTED = 10
 # Finalisation gets a tighter retry budget than investigation so total runtime
@@ -135,6 +139,7 @@ class AuditorAgent:
         self.evidence_repairs = 0
         self.workflow_nudges = 0
         self.coverage_nudges = 0
+        self.history_nudges = 0
         self._workflow_files_read: set[str] = set()
         self._files_read: set[str] = set()
         self._git_log_called = False
@@ -316,15 +321,21 @@ class AuditorAgent:
                         }
                     )
                     continue
-                coverage_request = self._coverage_review_request()
-                if coverage_request:
-                    self.coverage_nudges += 1
+                review_request = self._pre_submit_review_request()
+                if review_request:
+                    review_text, review_kind = review_request
+                    if review_kind == "history":
+                        self.history_nudges += 1
+                        label = "history review"
+                    else:
+                        self.coverage_nudges += 1
+                        label = "coverage review"
                     self.trace.append(
                         {
                             "step": self.steps,
                             "tool": "submit_report",
-                            "arguments": {"violations": "rejected (coverage review)"},
-                            "result_preview": "rejected: coverage review nudge",
+                            "arguments": {"violations": f"rejected ({label})"},
+                            "result_preview": f"rejected: {label} nudge",
                             "error": True,
                         }
                     )
@@ -333,7 +344,7 @@ class AuditorAgent:
                             "role": "tool",
                             "tool_call_id": call.get("id") or "submit",
                             "name": name,
-                            "content": coverage_request,
+                            "content": review_text,
                         }
                     )
                     continue
@@ -487,11 +498,12 @@ class AuditorAgent:
     def _coverage_review_request(self) -> str | None:
         """Build the pre-submit coverage nudge, or ``None`` when it is not needed.
 
-        The nudge asks for unread required files, the unread candidate files and,
-        when the history was never inspected, for a single ``git_log`` call. It is
+        The nudge asks for unread required files and unread candidate files. It is
         advisory only: it never creates a finding and the model may resubmit the
         same report. It is skipped once the wall-clock budget is spent so the
-        agent can finalise instead of starting another investigation step.
+        agent can finalise instead of starting another investigation step. The
+        history nudge has its own attempt budget, so honouring this request can
+        no longer spend it.
         """
         if self.coverage_nudges >= MAX_COVERAGE_NUDGES:
             return None
@@ -502,8 +514,7 @@ class AuditorAgent:
         candidates = [
             path for path in self._unread_candidates() if path not in required
         ]
-        needs_history = not self._git_log_called
-        if not required_request and not candidates and not needs_history:
+        if not required_request and not candidates:
             return None
         parts = []
         if required_request:
@@ -512,9 +523,48 @@ class AuditorAgent:
             parts.append(
                 COVERAGE_REVIEW_PROMPT.format(files=", ".join(candidates)).strip()
             )
-        if needs_history:
-            parts.append(GIT_LOG_REVIEW_PROMPT.strip())
         return " ".join(parts)
+
+    def _history_review_request(self) -> str | None:
+        """Nudge the model to inspect the history once, before it can finalise.
+
+        This is a generic completeness check, not a finding: an empty or
+        unavailable history needs no violation, and the model may resubmit the
+        same report. It carries its own attempt budget so that honouring a
+        required-reading or candidate request cannot consume it, and it is
+        skipped once the wall-clock budget is spent.
+        """
+        if self.history_nudges >= MAX_HISTORY_NUDGES:
+            return None
+        if self._git_log_called:
+            return None
+        if self._time_expired(self._started):
+            return None
+        return GIT_LOG_REVIEW_PROMPT.strip()
+
+    def _steps_nearly_exhausted(self) -> bool:
+        """True when the step budget is close to spent."""
+        return self.max_steps - self.steps <= STEP_BUDGET_PRIORITY_STEPS
+
+    def _pre_submit_review_request(self) -> tuple[str, str] | None:
+        """Choose the next pre-submit nudge as ``(text, kind)``, or ``None``.
+
+        The history nudge (a single ``git_log`` call) and the coverage nudge
+        (required reading plus candidate files) have independent attempt budgets,
+        so honouring one can no longer consume the other's request. When only a
+        few steps remain and the history was never inspected, the cheap history
+        nudge is served first so a late run still covers it. Neither nudge ever
+        creates a finding, and neither fires after the wall-clock deadline.
+        """
+        if self._time_expired(self._started):
+            return None
+        history = self._history_review_request()
+        coverage = self._coverage_review_request()
+        if history and (not coverage or self._steps_nearly_exhausted()):
+            return (history, "history")
+        if coverage:
+            return (coverage, "coverage")
+        return None
 
     def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
         violations = self._raw_violation_items(arguments)

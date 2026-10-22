@@ -303,7 +303,7 @@ python -m pytest -q
 ```
 
 ```text
-180 passed
+184 passed
 ```
 
 Coverage includes: URL parsing and rejection, clone path traversal/`.git` guards,

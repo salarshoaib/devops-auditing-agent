@@ -79,6 +79,7 @@ def test_agent_calls_tool_then_submits_report(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": "app.py", "start_line": 1, "end_line": 5}),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
@@ -86,11 +87,12 @@ def test_agent_calls_tool_then_submits_report(sample_repo):
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 3
+    assert result.steps == 4
     assert result.report["repository"] == "https://github.com/acme/demo"
     assert len(result.report["violations"]) == 1
     assert result.report["violations"][0]["rule_id"] == "SEC-001"
     assert [entry["tool"] for entry in result.trace] == [
+        "git_log",
         "read_file",
         "submit_report",
         "submit_report",
@@ -109,13 +111,14 @@ def test_agent_recovers_from_invalid_submission(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": "not-a-list"}),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 2
+    assert result.steps == 3
     assert len(result.report["violations"]) == 1
 
 
@@ -124,13 +127,14 @@ def test_agent_nudges_prose_replies(sample_repo):
         sample_repo,
         [
             _text_turn("I will start by looking at the repository."),
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 3  # prose, submission, then resubmit after the nudge
+    assert result.steps == 4  # prose, history, submission, then resubmit after the nudge
 
 
 def test_agent_handles_text_protocol_tool_calls(sample_repo):
@@ -139,6 +143,7 @@ def test_agent_handles_text_protocol_tool_calls(sample_repo):
         sample_repo,
         [
             _text_turn(call),
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
         ],
@@ -169,6 +174,7 @@ def test_agent_requests_evidence_before_accepting(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": [no_evidence]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-3"),
@@ -176,8 +182,8 @@ def test_agent_requests_evidence_before_accepting(sample_repo):
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 3
-    assert [entry["error"] for entry in result.trace] == [True, True, False]
+    assert result.steps == 4
+    assert [entry["error"] for entry in result.trace] == [False, True, True, False]
     assert result.report["violations"][0]["evidence"] == VIOLATION["evidence"]
 
 
@@ -186,6 +192,7 @@ def test_agent_normalises_bad_paths(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": [bad]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [bad]}, call_id="submit-2"),
         ],
@@ -200,6 +207,7 @@ def test_completeness_nudge_lists_unread_required_files(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
         ],
@@ -326,6 +334,7 @@ def test_agent_nudges_workflow_review_before_accepting(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
@@ -334,15 +343,16 @@ def test_agent_nudges_workflow_review_before_accepting(sample_repo):
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 4
+    assert result.steps == 5
     assert [entry["tool"] for entry in result.trace] == [
+        "git_log",
         "read_file",
         "submit_report",
         "submit_report",
         "submit_report",
     ]
-    assert [entry["error"] for entry in result.trace] == [False, True, True, False]
-    assert "triggers" in result.trace[1]["result_preview"]
+    assert [entry["error"] for entry in result.trace] == [False, False, True, True, False]
+    assert "triggers" in result.trace[2]["result_preview"]
     assert result.report["violations"] == []
 
 
@@ -360,6 +370,7 @@ def test_agent_nudges_workflow_review_even_when_a_workflow_has_a_finding(sample_
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-2"),
@@ -369,7 +380,7 @@ def test_agent_nudges_workflow_review_even_when_a_workflow_has_a_finding(sample_
     result = agent.run()
     assert result.submitted is True
     assert agent.workflow_nudges == 1
-    assert [entry["error"] for entry in result.trace] == [False, True, True, False]
+    assert [entry["error"] for entry in result.trace] == [False, False, True, True, False]
     assert result.report["violations"][0]["rule_id"] == "SEC-003"
 
 
@@ -389,6 +400,7 @@ def test_workflow_nudge_lists_every_read_workflow_and_the_checklist(sample_repo)
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r1"),
             _tool_turn("read_file", {"path": ".github/workflows/release.yml"}, call_id="r2"),
             _tool_turn("submit_report", {"violations": [finding]}, call_id="submit-1"),
@@ -417,6 +429,7 @@ def test_coverage_nudge_lists_only_unread_candidates(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
@@ -452,10 +465,12 @@ def test_coverage_nudge_asks_for_git_log_when_history_not_seen(sample_repo):
             _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-3"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
+    assert agent.history_nudges == 1
     nudge = [
         message["content"]
         for call in agent.llm.calls
@@ -493,6 +508,107 @@ def test_coverage_nudge_omits_git_log_after_history_was_read(sample_repo):
     assert "git_log" not in nudges[-1]
 
 
+def test_history_nudge_follows_a_required_reading_nudge(sample_repo):
+    """Honouring the coverage nudge must not spend the history attempt."""
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": "requirements.txt"}, call_id="r1"),
+            _tool_turn("read_file", {"path": ".gitignore"}, call_id="r2"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-3"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    assert agent.coverage_nudges == 1
+    assert agent.history_nudges == 1
+    assert agent._git_log_called is True
+    history_rejects = [
+        entry
+        for entry in result.trace
+        if entry.get("result_preview") == "rejected: history review nudge"
+    ]
+    assert len(history_rejects) == 1
+    coverage_rejects = [
+        entry
+        for entry in result.trace
+        if entry.get("result_preview") == "rejected: coverage review nudge"
+    ]
+    assert len(coverage_rejects) == 1
+
+
+def test_no_history_nudge_after_git_log_was_called(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    assert agent._git_log_called is True
+    assert agent.history_nudges == 0
+    assert not [
+        entry
+        for entry in result.trace
+        if entry.get("result_preview") == "rejected: history review nudge"
+    ]
+    tool_messages = [
+        message.get("content", "")
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool"
+    ]
+    assert not any("Call `git_log` once" in text for text in tool_messages)
+
+
+def test_no_nudges_after_the_deadline(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    agent.time_limit = 1e-6  # the budget is spent before the first step
+    result = agent.run()
+
+    assert result.submitted is True
+    assert agent.coverage_nudges == 0
+    assert agent.history_nudges == 0
+    assert not [
+        entry
+        for entry in result.trace
+        if "nudge" in str(entry.get("result_preview") or "")
+    ]
+    # The builders are deadline-aware on their own, not only through the run.
+    assert agent._history_review_request() is None
+    assert agent._coverage_review_request() is None
+    assert agent._pre_submit_review_request() is None
+
+
+def test_history_nudge_is_served_first_when_steps_are_nearly_spent(sample_repo):
+    agent = _agent(sample_repo, [])
+    agent.max_steps = 5
+
+    agent.steps = 1  # four steps left: the coverage nudge still comes first
+    text, kind = agent._pre_submit_review_request()
+    assert kind == "coverage"
+    assert "Call `git_log` once" not in text
+
+    agent.steps = 3  # two steps left: the history nudge is served first
+    text, kind = agent._pre_submit_review_request()
+    assert kind == "history"
+    assert "Call `git_log` once" in text
+
+
 def test_wall_clock_limit_finalises_with_partial_report(sample_repo):
     agent = _agent(
         sample_repo,
@@ -518,6 +634,7 @@ def test_trace_records_submitted_violations(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("submit_report", {"violations": [raw]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [raw]}, call_id="submit-2"),
         ],
@@ -563,6 +680,7 @@ def test_agent_nudges_unaddressed_workflow_file(sample_repo):
     agent = _agent(
         sample_repo,
         [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r1"),
             _tool_turn("read_file", {"path": ".github/workflows/release.yml"}, call_id="r2"),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
@@ -572,5 +690,5 @@ def test_agent_nudges_unaddressed_workflow_file(sample_repo):
     )
     result = agent.run()
     assert result.submitted is True
-    assert [entry["error"] for entry in result.trace] == [False, False, True, True, False]
+    assert [entry["error"] for entry in result.trace] == [False, False, False, True, True, False]
     assert agent.workflow_nudges == 1
