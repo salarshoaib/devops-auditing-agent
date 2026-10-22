@@ -29,11 +29,12 @@ MAX_WORKFLOW_NUDGES = 1
 _WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
 
 WORKFLOW_REVIEW_PROMPT = (
-    "Before submitting, re-check the workflow file(s) you read: {files}. "
-    "For each, confirm separately: (1) triggers - which events run it and whether "
-    "untrusted input is involved; (2) permissions - whether they are least-privilege; "
-    "(3) action pinning - whether each action is pinned to a commit SHA. "
-    "If you already checked all three, call submit_report again with the same report."
+    "Before submitting, re-check the workflow file(s) you read but reported nothing "
+    "in: {files}. For each, confirm separately: (1) triggers - which events run it "
+    "and whether untrusted input is involved; (2) permissions - whether they are "
+    "least-privilege; (3) action pinning - whether each action is pinned to a commit "
+    "SHA; (4) test steps - whether a failing command can actually fail the job. "
+    "If you already checked all four, call submit_report again with the same report."
 )
 
 
@@ -301,7 +302,7 @@ class AuditorAgent:
             self._workflow_files_read.add(text)
 
     def _workflow_review_gap(self, arguments: dict[str, Any]) -> list[str]:
-        """Return workflow files read without any workflow-anchored finding.
+        """Return read workflow files that no submitted finding addresses.
 
         This is a generic prompt-level nudge, not a finding: a healthy workflow
         produces no violation, so the model can resubmit the same report after
@@ -309,16 +310,18 @@ class AuditorAgent:
         """
         if not self._workflow_files_read or self.workflow_nudges >= MAX_WORKFLOW_NUDGES:
             return []
+        addressed: set[str] = set()
         for item in self._raw_violation_items(arguments) or []:
             if not isinstance(item, dict):
                 continue
             file = _normalise_repo_path(item.get("file"))
             if file.startswith(".github/workflows/"):
-                return []
+                addressed.add(file)
             text = f"{item.get('description', '')} {item.get('evidence', '')}".lower()
-            if any(path.lower() in text for path in self._workflow_files_read):
-                return []
-        return sorted(self._workflow_files_read)
+            for path in self._workflow_files_read:
+                if path.lower() in text:
+                    addressed.add(path)
+        return sorted(self._workflow_files_read - addressed)
 
     def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
         violations = self._raw_violation_items(arguments)

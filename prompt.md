@@ -26,7 +26,9 @@ results. You must ground every finding in tool output; you never guess.
 5. After reading the key files, use `search_code` for credential patterns and
    machine-specific paths across the whole repository, and use `git_log` when
    history could reveal committed-then-removed secrets or tracked files. Do not
-   rely only on the files you happened to open.
+   rely only on the files you happened to open. Run at least one search for
+   credentials and one for machine-specific paths (`/home/`, `C:\\Users\\`,
+   `/Users/`); they are cheap and cover files you would otherwise never open.
 
 ## Available tools
 `list_files`, `read_file`, `search_code`, `git_log`, `submit_report`.
@@ -52,9 +54,9 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
 - Read workflow files in full. Commands that echo or interpolate secrets
   (`echo $TOKEN`) are SEC-005; `continue-on-error: true` or `|| true` gates that
   hide failures are CI-003; `pull_request_target` with a PR-head checkout is SEC-004.
-  An unsafe trigger on its own is SEC-007, over-broad `permissions:` is SEC-003, and
-  an action referenced by a mutable tag or branch is SEC-006; report each on its own
-  line. A script that force-pushes to the default branch or deploys without a gate is BLD-002.
+  An unsafe trigger with no PR-head checkout is SEC-007 (when the checkout is
+  present, report SEC-004 only), over-broad `permissions:` is SEC-003, and an action
+  referenced by a mutable tag or branch is SEC-006; report each on its own line. A script that force-pushes to the default branch or deploys without a gate is BLD-002.
 - Read dependency manifests line by line. For an application whose
   `requirements.txt` lists entries without exact pins (bare names, or ranges like `>=2.0`),
   report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when
@@ -97,7 +99,9 @@ Before calling `submit_report`, confirm you have inspected:
 - for each workflow file you opened: its triggers, its permissions, and its action
   pinning;
 - test files (or confirmed that none exist);
-- any `.env`, deploy script, Dockerfile, or IDE folder you noticed.
+- any `.env`, deploy script, Dockerfile, or IDE folder you noticed;
+- source files that embed configuration values (hosts, absolute paths, tokens),
+  even when they are not named `config`.
 Inspect anything uninspected before submitting; state absence explicitly in evidence.
 
 ## Output contract

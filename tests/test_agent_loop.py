@@ -244,3 +244,32 @@ def test_trace_records_violations_during_finalisation(sample_repo):
     entry = [item for item in result.trace if item["tool"] == "submit_report"][-1]
     assert entry["arguments"]["violations"][0]["rule_id"] == "SEC-001"
     assert entry["arguments"]["violations"][0]["file"] == "app.py"
+
+
+def test_agent_nudges_unaddressed_workflow_file(sample_repo):
+    (sample_repo.root / ".github" / "workflows" / "release.yml").write_text(
+        "name: Release\non: push\njobs: {}\n", encoding="utf-8"
+    )
+    workflow_finding = dict(
+        VIOLATION,
+        rule_id="SEC-003",
+        category="security",
+        severity="high",
+        file=".github/workflows/ci.yml",
+        line=3,
+        description="Workflow grants write-all permissions",
+        evidence="permissions: write-all",
+    )
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r1"),
+            _tool_turn("read_file", {"path": ".github/workflows/release.yml"}, call_id="r2"),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    assert [entry["error"] for entry in result.trace] == [False, False, True, False]
+    assert agent.workflow_nudges == 1
