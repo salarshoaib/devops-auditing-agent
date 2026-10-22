@@ -406,6 +406,13 @@ GitHub URLs, so publishing the prepared clone is a manual step.
 - Report quality depends on the chosen model's tool-calling ability; smaller models
   may need more steps (`--max-steps`).
 - Cost/latency scale with repository size and step budget.
+- Recall varies between runs because the LLM is non-deterministic. On a held-out
+  fixture the agent found 8-10 of 15 seeded defects with no false positives.
+  Container-file defects (floating base image, root user) and dead workflow
+  triggers are the least reliably detected.
+- The default step budget is 30; large repositories with many workflows may
+  exhaust it, in which case the agent submits what it has found.
+- Only `gemini-3.5-flash-lite` has been tested; other models are not yet tested.
 
 ## Project layout
 
