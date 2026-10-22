@@ -40,7 +40,7 @@ hard-coded repository knowledge; the rule catalog is vocabulary, not a checklist
 - **Never leaks secrets** - tool output fed to the model, trace files, and reports
   all pass through a redactor. Evidence keeps the key name, never the value.
 - **Safe by design** - no repository code is executed; the clone is thrown away.
-- **166 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
+- **184 automated tests** covering tools, the loop, normalisation, redaction, and the CLI.
 
 ## Architecture
 
@@ -471,6 +471,6 @@ reporting.py        validation, dedupe, severity policy, JSON writer
 redaction.py        secret redaction
 requirements.txt    runtime/test dependencies
 .env.example        configuration template
-tests/              166 automated tests
+tests/              184 automated tests
 sample_report.json  authentic output from a real run
 ```
