@@ -76,7 +76,7 @@ overview --> [ LLM turn ] --tool_call--> execute --> append result --> repeat
                  +--budget reached--> forced submit_report with current evidence
 ```
 
-Manifest signals in the overview only tell the model which files exist so it knows what to inspect. They are not findings; every violation still requires the model to read the evidence.
+Manifest signals in the overview only tell the model which files exist so it knows what to inspect. The overview also lists generic candidate files derived from the file tree — dependency manifests (including secondary dev/test ones), configuration-like files, and committed editor/IDE directories — as "files worth inspecting". None of these lists are findings: they point the model at files, and every violation still requires the model to read the evidence. A single pre-submit coverage nudge names up to 12 of those candidates that have not been read yet; it can be declined by resubmitting the same report.
 
 ## Requirements
 
@@ -273,6 +273,12 @@ return a cached result so the model does not loop on the same question.
   only a second incomplete submission falls back to a placeholder.
 - If the model replies with prose, it is nudged twice; if the step budget runs out,
   a finalisation turn forces submission of what has been proven.
+- Once a workflow file has been read, one submit attempt is answered with a review
+  checklist covering every workflow file read (triggers, permissions, action
+  pinning, untrusted input, remote scripts, pinned installs, credentials, failing
+  steps). Once per run, a similar nudge names candidate dependency, configuration
+  and IDE files that were never opened. Both are advisory: the model can resubmit
+  the same report unchanged, and neither ever creates a finding.
 - Any fatal error exits non-zero with a one-line message and never writes a
   half-finished report.
 

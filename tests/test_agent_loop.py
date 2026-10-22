@@ -71,15 +71,20 @@ def test_agent_calls_tool_then_submits_report(sample_repo):
         [
             _tool_turn("read_file", {"path": "app.py", "start_line": 1, "end_line": 5}),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 2
+    assert result.steps == 3
     assert result.report["repository"] == "https://github.com/acme/demo"
     assert len(result.report["violations"]) == 1
     assert result.report["violations"][0]["rule_id"] == "SEC-001"
-    assert [entry["tool"] for entry in result.trace] == ["read_file", "submit_report"]
+    assert [entry["tool"] for entry in result.trace] == [
+        "read_file",
+        "submit_report",
+        "submit_report",
+    ]
 
 
 def test_agent_accepts_report_from_text(sample_repo):
@@ -109,12 +114,13 @@ def test_agent_nudges_prose_replies(sample_repo):
         sample_repo,
         [
             _text_turn("I will start by looking at the repository."),
-            _tool_turn("submit_report", {"violations": []}),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 2  # prose, then nudge + submission
+    assert result.steps == 3  # prose, submission, then resubmit after the nudge
 
 
 def test_agent_handles_text_protocol_tool_calls(sample_repo):
@@ -123,7 +129,8 @@ def test_agent_handles_text_protocol_tool_calls(sample_repo):
         sample_repo,
         [
             _text_turn(call),
-            _tool_turn("submit_report", {"violations": []}),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
         ],
     )
     result = agent.run()
@@ -154,18 +161,25 @@ def test_agent_requests_evidence_before_accepting(sample_repo):
         [
             _tool_turn("submit_report", {"violations": [no_evidence]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": [VIOLATION]}, call_id="submit-3"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 2
-    assert [entry["error"] for entry in result.trace] == [True, False]
+    assert result.steps == 3
+    assert [entry["error"] for entry in result.trace] == [True, True, False]
     assert result.report["violations"][0]["evidence"] == VIOLATION["evidence"]
 
 
 def test_agent_normalises_bad_paths(sample_repo):
     bad = dict(VIOLATION, file="ghost.py", line=99)
-    agent = _agent(sample_repo, [_tool_turn("submit_report", {"violations": [bad]})])
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": [bad]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [bad]}, call_id="submit-2"),
+        ],
+    )
     result = agent.run()
     violation = result.report["violations"][0]
     assert violation["file"] is None
@@ -179,22 +193,24 @@ def test_agent_nudges_workflow_review_before_accepting(sample_repo):
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-3"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 3
+    assert result.steps == 4
     assert [entry["tool"] for entry in result.trace] == [
         "read_file",
         "submit_report",
         "submit_report",
+        "submit_report",
     ]
-    assert [entry["error"] for entry in result.trace] == [False, True, False]
+    assert [entry["error"] for entry in result.trace] == [False, True, True, False]
     assert "triggers" in result.trace[1]["result_preview"]
     assert result.report["violations"] == []
 
 
-def test_agent_skips_workflow_nudge_when_workflow_has_a_finding(sample_repo):
+def test_agent_nudges_workflow_review_even_when_a_workflow_has_a_finding(sample_repo):
     workflow_finding = dict(
         VIOLATION,
         rule_id="SEC-003",
@@ -210,18 +226,106 @@ def test_agent_skips_workflow_nudge_when_workflow_has_a_finding(sample_repo):
         [
             _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-3"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert result.steps == 2
-    assert [entry["tool"] for entry in result.trace] == ["read_file", "submit_report"]
+    assert agent.workflow_nudges == 1
+    assert [entry["error"] for entry in result.trace] == [False, True, True, False]
     assert result.report["violations"][0]["rule_id"] == "SEC-003"
+
+
+def test_workflow_nudge_lists_every_read_workflow_and_the_checklist(sample_repo):
+    (sample_repo.root / ".github" / "workflows" / "release.yml").write_text(
+        "name: Release\non: push\njobs: {}\n", encoding="utf-8"
+    )
+    finding = dict(
+        VIOLATION,
+        rule_id="SEC-003",
+        category="security",
+        file=".github/workflows/ci.yml",
+        line=3,
+        description="Workflow grants write-all permissions",
+        evidence="permissions: write-all",
+    )
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": ".github/workflows/ci.yml"}, call_id="r1"),
+            _tool_turn("read_file", {"path": ".github/workflows/release.yml"}, call_id="r2"),
+            _tool_turn("submit_report", {"violations": [finding]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [finding]}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": [finding]}, call_id="submit-3"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    nudge = [
+        message["content"]
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool" and "workflow file you read" in message.get("content", "")
+    ][-1]
+    assert ".github/workflows/ci.yml" in nudge
+    assert ".github/workflows/release.yml" in nudge
+    for element in ("triggers", "permissions", "action references", "untrusted event data",
+                    "piped", "version pins", "credentials", "cannot fail the job"):
+        assert element in nudge
+    assert "A file with no defects needs no output" in nudge
+
+
+def test_coverage_nudge_lists_only_unread_candidates(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+
+    assert result.submitted is True
+    assert agent.coverage_nudges == 1
+    nudge = [
+        message["content"]
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool" and "not findings" in message.get("content", "")
+    ][-1]
+    assert "requirements.txt" in nudge
+    assert "config.py" not in nudge
+    assert result.report["violations"] == []
+
+
+def test_coverage_nudge_caps_candidate_list(sample_repo):
+    for index in range(20):
+        (sample_repo.root / f"settings_{index}.ini").write_text("x = 1\n", encoding="utf-8")
+    agent = _agent(sample_repo, [])
+    assert len(agent._unread_candidates()) == 12
+
+
+def test_workflow_nudge_caps_the_file_list(sample_repo):
+    agent = _agent(sample_repo, [])
+    agent._workflow_files_read = {
+        f".github/workflows/w{index:02d}.yml" for index in range(20)
+    }
+    listed = agent._workflow_review_list()
+    assert len(listed) == 15
 
 
 def test_trace_records_submitted_violations(sample_repo):
     raw = dict(VIOLATION, description="Hardcoded key AKIAIOSFODNN7EXAMPLE in app.py")
-    agent = _agent(sample_repo, [_tool_turn("submit_report", {"violations": [raw]})])
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": [raw]}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": [raw]}, call_id="submit-2"),
+        ],
+    )
     result = agent.run()
     entry = result.trace[-1]
     assert entry["tool"] == "submit_report"
@@ -267,9 +371,10 @@ def test_agent_nudges_unaddressed_workflow_file(sample_repo):
             _tool_turn("read_file", {"path": ".github/workflows/release.yml"}, call_id="r2"),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-1"),
             _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-2"),
+            _tool_turn("submit_report", {"violations": [workflow_finding]}, call_id="submit-3"),
         ],
     )
     result = agent.run()
     assert result.submitted is True
-    assert [entry["error"] for entry in result.trace] == [False, False, True, False]
+    assert [entry["error"] for entry in result.trace] == [False, False, True, True, False]
     assert agent.workflow_nudges == 1

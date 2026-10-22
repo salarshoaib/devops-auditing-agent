@@ -25,16 +25,37 @@ MAX_TOOL_OUTPUT_CHARS = 24000
 MAX_STEPS_HARD_LIMIT = 80
 MAX_EVIDENCE_REPAIRS = 1
 MAX_WORKFLOW_NUDGES = 1
+MAX_WORKFLOW_FILES_LISTED = 15
+MAX_COVERAGE_NUDGES = 1
+MAX_COVERAGE_FILES_LISTED = 12
 
 _WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
 
 WORKFLOW_REVIEW_PROMPT = (
-    "Before submitting, re-check the workflow file(s) you read but reported nothing "
-    "in: {files}. For each, confirm separately: (1) triggers - which events run it "
-    "and whether untrusted input is involved; (2) permissions - whether they are "
-    "least-privilege; (3) action pinning - whether each action is pinned to a commit "
-    "SHA; (4) test steps - whether a failing command can actually fail the job. "
-    "If you already checked all four, call submit_report again with the same report."
+    "Before submitting, re-check every workflow file you read: {files}.\n"
+    "Check each file against this list and report each defect as its own violation "
+    "with its own line number:\n"
+    "(1) triggers - which events run it and whether untrusted input is involved;\n"
+    "(2) permissions - at workflow level AND job level, and whether they are "
+    "least-privilege;\n"
+    "(3) action references - each pinned to a commit SHA, not a mutable tag or branch;\n"
+    "(4) untrusted event data (github.event.*, github.head_ref, issue/PR titles, "
+    "bodies, branch names) interpolated into a run: script;\n"
+    "(5) remote scripts downloaded and piped to a shell;\n"
+    "(6) packages installed without version pins;\n"
+    "(7) credentials in env: blocks or run: steps;\n"
+    "(8) test or validation steps that cannot fail the job.\n"
+    "A file with no defects needs no output. If you already checked all of this, "
+    "call submit_report again with the same report."
+)
+
+COVERAGE_REVIEW_PROMPT = (
+    "Before submitting, open the relevant files you have not read yet: {files}. "
+    "They are candidates detected from the file tree, not findings: dependency "
+    "manifests (including secondary dev/test manifests), configuration files, and "
+    "committed editor/IDE settings. Read the ones that matter for this repository "
+    "and report any defects you find, each as its own violation. Ignore the rest; "
+    "if none are relevant, call submit_report again with the same report."
 )
 
 
@@ -66,7 +87,9 @@ class AuditorAgent:
         self.trace: list[dict[str, Any]] = []
         self.evidence_repairs = 0
         self.workflow_nudges = 0
+        self.coverage_nudges = 0
         self._workflow_files_read: set[str] = set()
+        self._files_read: set[str] = set()
         self._messages: list[dict[str, Any]] = []
         self._schemas = tool_schemas()
 
@@ -186,7 +209,7 @@ class AuditorAgent:
                         }
                     )
                     continue
-                workflows = self._workflow_review_gap(arguments)
+                workflows = self._workflow_review_list()
                 if workflows and self.workflow_nudges < MAX_WORKFLOW_NUDGES:
                     self.workflow_nudges += 1
                     self.trace.append(
@@ -195,9 +218,10 @@ class AuditorAgent:
                             "tool": "submit_report",
                             "arguments": {"violations": "rejected (workflow review)"},
                             "result_preview": (
-                                "rejected: workflow review nudge for "
+                                "rejected: workflow review checklist for "
                                 f"{len(workflows)} file(s): triggers, permissions, "
-                                "action pinning"
+                                "action pinning, untrusted input, remote scripts, "
+                                "pinned installs, credentials, failing steps"
                             ),
                             "error": True,
                         }
@@ -209,6 +233,32 @@ class AuditorAgent:
                             "name": name,
                             "content": WORKFLOW_REVIEW_PROMPT.format(
                                 files=", ".join(workflows)
+                            ),
+                        }
+                    )
+                    continue
+                candidates = self._unread_candidates()
+                if candidates and self.coverage_nudges < MAX_COVERAGE_NUDGES:
+                    self.coverage_nudges += 1
+                    self.trace.append(
+                        {
+                            "step": self.steps,
+                            "tool": "submit_report",
+                            "arguments": {"violations": "rejected (coverage review)"},
+                            "result_preview": (
+                                "rejected: coverage review for "
+                                f"{len(candidates)} unread candidate file(s)"
+                            ),
+                            "error": True,
+                        }
+                    )
+                    self._messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id") or "submit",
+                            "name": name,
+                            "content": COVERAGE_REVIEW_PROMPT.format(
+                                files=", ".join(candidates)
                             ),
                         }
                     )
@@ -252,6 +302,8 @@ class AuditorAgent:
                 if name == "read_file":
                     self._note_workflow_read(arguments.get("path"))
                 output = self.toolbox.execute(name, arguments, step=self.steps)
+                if name == "read_file" and not output.startswith("ERROR"):
+                    self._files_read.add(_normalise_repo_path(arguments.get("path")))
 
             self.trace.append(
                 {
@@ -301,27 +353,29 @@ class AuditorAgent:
         if _WORKFLOW_PATH.match(text):
             self._workflow_files_read.add(text)
 
-    def _workflow_review_gap(self, arguments: dict[str, Any]) -> list[str]:
-        """Return read workflow files that no submitted finding addresses.
+    def _workflow_review_list(self) -> list[str]:
+        """Return every workflow file read so far, for a single review nudge.
 
         This is a generic prompt-level nudge, not a finding: a healthy workflow
         produces no violation, so the model can resubmit the same report after
-        confirming triggers, permissions and action pinning.
+        confirming each file against the checklist.
         """
         if not self._workflow_files_read or self.workflow_nudges >= MAX_WORKFLOW_NUDGES:
             return []
-        addressed: set[str] = set()
-        for item in self._raw_violation_items(arguments) or []:
-            if not isinstance(item, dict):
-                continue
-            file = _normalise_repo_path(item.get("file"))
-            if file.startswith(".github/workflows/"):
-                addressed.add(file)
-            text = f"{item.get('description', '')} {item.get('evidence', '')}".lower()
-            for path in self._workflow_files_read:
-                if path.lower() in text:
-                    addressed.add(path)
-        return sorted(self._workflow_files_read - addressed)
+        return sorted(self._workflow_files_read)[:MAX_WORKFLOW_FILES_LISTED]
+
+    def _unread_candidates(self) -> list[str]:
+        """Candidate files the agent has not opened yet, capped for the nudge.
+
+        Candidates come from the file tree only; they are prompts to look, never
+        findings, and the model may resubmit the same report unchanged.
+        """
+        if self.coverage_nudges >= MAX_COVERAGE_NUDGES:
+            return []
+        unread: set[str] = set()
+        for paths in self.toolbox.candidate_files().values():
+            unread.update(path for path in paths if path not in self._files_read)
+        return sorted(unread)[:MAX_COVERAGE_FILES_LISTED]
 
     def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
         violations = self._raw_violation_items(arguments)
