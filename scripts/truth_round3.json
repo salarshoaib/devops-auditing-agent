@@ -1,0 +1,62 @@
+[
+  {
+    "file": ".github/workflows/ci.yml",
+    "keywords": ["pull_request_target", "trigger", "privileged", "untrusted"]
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "keywords": ["write-all", "permission", "over-broad", "overly permissive"]
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "keywords": ["head.ref", "checkout", "untrusted code", "pull request head", "ref:"]
+  },
+  {
+    "file": ".github/workflows/comment.yml",
+    "keywords": ["eval", "injection", "comment", "untrusted", "shell"]
+  },
+  {
+    "file": ".github/workflows/docs.yml",
+    "keywords": ["nonexistent", "branch", "trigger", "never run", "does not run"]
+  },
+  {
+    "file": ".github/workflows/docs.yml",
+    "keywords": ["cannot fail", "skip", "pytest", "|| echo", "continue-on-error", "mask"]
+  },
+  {
+    "file": "Dockerfile",
+    "keywords": ["latest", "base image", "mutable", "tag", "unpinned"]
+  },
+  {
+    "file": "Dockerfile",
+    "keywords": ["api_secret", "secret", "credential", "env", "hardcoded"]
+  },
+  {
+    "file": "Dockerfile",
+    "keywords": ["root", "user", "privilege", "non-root"]
+  },
+  {
+    "file": ".idea/workspace.xml",
+    "keywords": ["idea", "ide", "editor", "machine", "absolute path", "workspace"]
+  },
+  {
+    "file": "settings/local.cfg",
+    "keywords": ["debug", "debug mode", "verbose"]
+  },
+  {
+    "file": "settings/local.cfg",
+    "keywords": ["password", "credential", "secret", "hardcoded"]
+  },
+  {
+    "file": "Pipfile",
+    "keywords": ["pipfile", "unpinned", "wildcard", "version", "unbounded", "*"]
+  },
+  {
+    "file": ".env.production",
+    "keywords": ["env", "secret", "password", "committed", "tracked"]
+  },
+  {
+    "file": ".gitignore",
+    "keywords": ["gitignore", "ignore", "env", "not ignored"]
+  }
+]

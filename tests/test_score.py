@@ -120,6 +120,27 @@ def test_two_violations_can_satisfy_two_truths():
     assert result["extra"] == []
 
 
+def test_round3_truth_file_loads():
+    truth = json.loads((SCRIPTS / "truth_round3.json").read_text(encoding="utf-8"))
+
+    assert isinstance(truth, list)
+    assert truth
+    for entry in truth:
+        assert entry["file"].strip()
+        assert entry["keywords"]
+        assert all(isinstance(keyword, str) and keyword.strip() for keyword in entry["keywords"])
+
+
+def test_round3_truth_files_are_seeded_by_the_injector():
+    import inject_round3
+
+    truth = json.loads((SCRIPTS / "truth_round3.json").read_text(encoding="utf-8"))
+    seeded = set(inject_round3.FILES) | {".gitignore"}
+
+    assert {entry["file"] for entry in truth} <= seeded
+    assert set(inject_round3.FORCE_ADDED) <= set(inject_round3.FILES)
+
+
 def test_cli_accepts_second_truth_argument(tmp_path, monkeypatch, capsys):
     report = tmp_path / "report.json"
     report.write_text(
