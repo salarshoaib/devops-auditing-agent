@@ -46,24 +46,32 @@ def matches(entry: dict[str, Any], violation: dict[str, Any]) -> bool:
 def score(
     truth: list[dict[str, Any]], violations: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Return recall/precision counts plus the missed entries and extra findings."""
-    found_entries: list[dict[str, Any]] = []
+    """Return recall/precision counts plus the missed entries and extra findings.
+
+    Matching is one-to-one: each truth entry claims at most one violation, and a
+    violation already claimed by an earlier truth entry cannot satisfy a later
+    one. Entries are processed in file order (greedy).
+    """
+    matched = 0
     used: set[int] = set()
     missed: list[dict[str, Any]] = []
     for entry in truth:
-        hits = [
-            index
-            for index, violation in enumerate(violations)
-            if matches(entry, violation)
-        ]
-        if hits:
-            found_entries.append(entry)
-            used.update(hits)
-        else:
+        hit = next(
+            (
+                index
+                for index, violation in enumerate(violations)
+                if index not in used and matches(entry, violation)
+            ),
+            None,
+        )
+        if hit is None:
             missed.append(entry)
+        else:
+            used.add(hit)
+            matched += 1
     extra = [violation for index, violation in enumerate(violations) if index not in used]
     return {
-        "recall": (len(found_entries), len(truth)),
+        "recall": (matched, len(truth)),
         "precision": (len(used), len(violations)),
         "missed": missed,
         "extra": extra,

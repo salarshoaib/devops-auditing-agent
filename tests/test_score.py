@@ -71,3 +71,49 @@ def test_one_violation_can_satisfy_only_its_own_entry():
 
     assert result["recall"] == (1, 2)
     assert result["precision"] == (1, 1)
+
+
+def test_one_violation_cannot_satisfy_two_truths():
+    truth = [
+        {"file": ".github/workflows/pr-bot.yml", "keywords": ["pull_request_target"]},
+        {"file": ".github/workflows/pr-bot.yml", "keywords": ["write-all"]},
+    ]
+    violations = [
+        _violation(
+            ".github/workflows/pr-bot.yml",
+            "Unsafe trigger with write-all",
+            "on: pull_request_target permissions: write-all",
+        )
+    ]
+
+    result = score.score(truth, violations)
+
+    assert result["recall"] == (1, 2)
+    assert result["precision"] == (1, 1)
+    assert [entry["keywords"] for entry in result["missed"]] == [["write-all"]]
+
+
+def test_two_violations_can_satisfy_two_truths():
+    truth = [
+        {"file": ".github/workflows/pr-bot.yml", "keywords": ["pull_request_target"]},
+        {"file": ".github/workflows/pr-bot.yml", "keywords": ["write-all"]},
+    ]
+    violations = [
+        _violation(
+            ".github/workflows/pr-bot.yml",
+            "Workflow uses pull_request_target",
+            "on: pull_request_target",
+        ),
+        _violation(
+            ".github/workflows/pr-bot.yml",
+            "Workflow grants write-all",
+            "permissions: write-all",
+        ),
+    ]
+
+    result = score.score(truth, violations)
+
+    assert result["recall"] == (2, 2)
+    assert result["precision"] == (2, 2)
+    assert result["missed"] == []
+    assert result["extra"] == []
