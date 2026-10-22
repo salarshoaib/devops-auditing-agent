@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -117,3 +118,35 @@ def test_two_violations_can_satisfy_two_truths():
     assert result["precision"] == (2, 2)
     assert result["missed"] == []
     assert result["extra"] == []
+
+
+def test_cli_accepts_second_truth_argument(tmp_path, monkeypatch, capsys):
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps({"violations": [_violation("config/prod.py", "Debug mode enabled", "DEBUG = True")]}),
+        encoding="utf-8",
+    )
+    truth = tmp_path / "truth_round2.json"
+    truth.write_text(
+        json.dumps([{"file": "config/prod.py", "keywords": ["debug"]}]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sys, "argv", ["score.py", str(report), str(truth)])
+
+    assert score.main() == 0
+    printed = capsys.readouterr().out
+    assert "Recall 1/1" in printed
+    assert "Precision 1/1" in printed
+
+
+def test_cli_defaults_to_the_bundled_truth_file(tmp_path, monkeypatch, capsys):
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({"violations": []}), encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", ["score.py", str(report)])
+
+    assert score.main() == 0
+    printed = capsys.readouterr().out
+    bundled = json.loads(score.TRUTH_PATH.read_text(encoding="utf-8"))
+    assert f"Recall 0/{len(bundled)}" in printed

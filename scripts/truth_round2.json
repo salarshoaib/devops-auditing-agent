@@ -1,0 +1,42 @@
+[
+  {
+    "file": ".github/workflows/release.yml",
+    "keywords": ["curl", "remote", "pipe", "bash"]
+  },
+  {
+    "file": ".github/workflows/greet.yml",
+    "keywords": ["injection", "untrusted", "pull_request.title", "title"]
+  },
+  {
+    "file": ".github/workflows/lint.yml",
+    "keywords": ["write-all", "permission"]
+  },
+  {
+    "file": ".github/workflows/lint.yml",
+    "keywords": ["unpinned", "pip install", "ruff", "version"]
+  },
+  {
+    "file": ".github/workflows/deploy.yml",
+    "keywords": ["mutable", "main", "pin", "@v"]
+  },
+  {
+    "file": ".github/workflows/deploy.yml",
+    "keywords": ["aws", "secret", "credential", "access key"]
+  },
+  {
+    "file": ".vscode/settings.json",
+    "keywords": ["vscode", "interpreter", "machine", "absolute", "path"]
+  },
+  {
+    "file": "config/prod.py",
+    "keywords": ["debug", "debug mode"]
+  },
+  {
+    "file": "config/prod.py",
+    "keywords": ["database", "credential", "password", "postgres"]
+  },
+  {
+    "file": "requirements-dev.txt",
+    "keywords": ["unpinned", "pin", "version", "requirements-dev"]
+  }
+]

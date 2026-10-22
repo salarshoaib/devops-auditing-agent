@@ -91,11 +91,17 @@ def _describe(violation: dict[str, Any]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", help="Path to the audit report JSON.")
-    parser.add_argument("--truth", default=str(TRUTH_PATH), help="Path to the truth file.")
+    parser.add_argument(
+        "truth_file",
+        nargs="?",
+        default=str(TRUTH_PATH),
+        metavar="TRUTH",
+        help="Path to the truth file (default: truth.json next to this script).",
+    )
     args = parser.parse_args()
 
     report = json.loads(Path(args.report).read_text(encoding="utf-8"))
-    truth = json.loads(Path(args.truth).read_text(encoding="utf-8"))
+    truth = json.loads(Path(args.truth_file).read_text(encoding="utf-8"))
     violations = report.get("violations", [])
 
     result = score(truth, violations)
