@@ -147,9 +147,9 @@
       "severity": "low",
       "file": ".github/workflows/ci.yml",
       "line": 13,
-      "description": "Third-party action pinned to a mutable tag or branch instead of an immutable commit hash",
+      "description": "Action reference follows the master branch instead of a version tag or SHA",
       "evidence": ".github/workflows/ci.yml uses actions/checkout@master on line 13",
-      "recommendation": "Pin third-party actions to a full-length commit SHA."
+      "recommendation": "Reference a released version tag (for example v4) or a commit SHA instead of a moving branch such as main or master."
     }
   ]
 }

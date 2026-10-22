@@ -213,7 +213,7 @@
             "rule_id": "SEC-006",
             "file": ".github/workflows/ci.yml",
             "line": 13,
-            "description": "Third-party action pinned to a mutable tag or branch instead of an immutable commit hash"
+            "description": "Action reference follows the master branch instead of a version tag or SHA"
           }
         ]
       },

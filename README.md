@@ -216,13 +216,18 @@ A real generated report is committed as [`sample_report.json`](sample_report.jso
 | CI-001 | ci_cd | high | No continuous integration workflow |
 | CI-002 | ci_cd | medium | Workflow triggers missing or too narrow |
 | CI-003 | ci_cd | high | CI step cannot fail the build |
-| CI-004 | ci_cd | low | Deprecated runner/action versions |
+| CI-004 | ci_cd | low | Runner/action reference follows a moving branch |
+| CI-005 | ci_cd | medium | Packages installed in CI without version pins |
 | SEC-001 | security | critical | Hardcoded credential in source/config |
 | SEC-002 | security | critical | Environment/secret file committed |
 | SEC-003 | security | high | Unsafe workflow permissions |
 | SEC-004 | security | critical | Untrusted code executed with elevated context |
 | SEC-005 | security | high | Secrets printed or passed to untrusted commands |
-| SEC-006 | security | low | Third-party actions pinned to a mutable tag |
+| SEC-006 | security | low | Action reference points at a moving branch |
+| SEC-007 | security | high | Workflow trigger grants untrusted privileged context |
+| SEC-008 | security | high | Untrusted event data interpolated into a run step |
+| SEC-009 | security | high | Remote script downloaded and piped into a shell |
+| SEC-010 | security | critical | Connection string with embedded credentials |
 | CFG-001 | configuration | high | Machine-specific absolute path |
 | CFG-002 | configuration | medium | Local IDE/environment settings committed |
 | CFG-003 | configuration | medium | Configuration without environment separation |

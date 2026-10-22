@@ -66,9 +66,12 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   hide failures are CI-003; `pull_request_target` with a PR-head checkout is SEC-004.
   An unsafe trigger with no PR-head checkout is SEC-007 (when the checkout is
   present, report SEC-004 only), over-broad `permissions:` at workflow or job level
-  is SEC-003, and an action referenced by a mutable tag or branch is SEC-006; report
-  each on its own line. Untrusted event data (`github.event.*`, `github.head_ref`,
-  titles, bodies, branch names) interpolated into a `run:` command is SEC-008;
+  is SEC-003, and an action reference that points at a moving branch (main, master,
+  develop, dev, trunk, HEAD, latest) is SEC-006; report each on its own line. Version
+  tags such as v4, v4.1 or 1.2.3 are acceptable action references and must NOT be
+  reported, and a 40-character commit SHA is never a violation. Untrusted event data
+  (`github.event.*`, `github.head_ref`, titles, bodies, branch names) interpolated
+  into a `run:` command is SEC-008;
   downloading and piping a remote script into a shell is SEC-009; installing packages
   in a workflow step without a version pin is CI-005; a credential assigned in a
   workflow `env:` block or `run:` line is SEC-001. A script that force-pushes to the
@@ -103,12 +106,18 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   constraints/unsafe permissions = medium; style and documentation gaps = low.
 - A healthy repository must produce an empty violations list. Reporting nothing
   is a valid, successful outcome.
+- Report a defect only when the evidence you read shows a concrete problem.
+  Accepted conventions (version-tagged action references, pinned lower-bound
+  dependency ranges used by libraries, standard CI settings) are not defects. If
+  you are unsure whether something is a defect, leave it out. Descriptions must be
+  plain statements of the defect with no prefixes such as "warning" or "health
+  check".
 
 ## Reporting granularity (critical)
 Report each distinct defect as its own violation with its own rule_id and its own
 line number. Never combine several defects into one finding, even when they are in
 the same file or block. Principle: a workflow with an unsafe trigger, an over-broad
-permissions block and a mutable action reference has three defects and needs three
+permissions block and an action reference that follows a moving branch has three defects and needs three
 violations, each pointing at the line where that specific problem appears. Before
 submitting, re-read each workflow file and check separately: triggers, permissions,
 action pinning, how untrusted input is used, and whether test steps can actually
