@@ -36,3 +36,5 @@ Assignment_*.pdf
 
 # Local stress-test outputs
 runs/
+r2*.json
+healthy_*.json
