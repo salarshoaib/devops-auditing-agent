@@ -37,12 +37,25 @@ MAX_WORKFLOW_NUDGES = 1
 MAX_WORKFLOW_FILES_LISTED = 15
 MAX_COVERAGE_NUDGES = 1
 MAX_COVERAGE_FILES_LISTED = 12
-MAX_REQUIRED_FILES_LISTED = 25
+MAX_REQUIRED_FILES_LISTED = 10
 # Finalisation gets a tighter retry budget than investigation so total runtime
 # stays close to the wall-clock limit even when the provider is unavailable.
 FINALISE_RETRIES = 1
 
 _WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
+
+
+def _required_priority(path: str) -> tuple[int, str]:
+    """Order unread required files: repo root first, then workflows, then rest.
+
+    The listing shown to the model is capped, so the files most likely to hold
+    cross-cutting defects have to come first.
+    """
+    if "/" not in path:
+        return (0, path)
+    if _WORKFLOW_PATH.match(path):
+        return (1, path)
+    return (2, path)
 
 WORKFLOW_REVIEW_PROMPT = (
     "Before submitting, re-check every workflow file you read: {files}.\n"
@@ -84,7 +97,8 @@ GIT_LOG_REVIEW_PROMPT = (
 READING_REVIEW_PROMPT = (
     "Before submitting, read these files in full: {files}. They exist in the "
     "repository tree, and a complete audit must open every workflow file, every "
-    "container build file, every dependency manifest and .gitignore. Reading them "
+    "container build file, every dependency manifest, every configuration file "
+    "and .gitignore. Reading them "
     "is not a finding requirement: a clean file produces no violation. After you "
     "have read them, call submit_report again with the same or an updated report."
 )
@@ -440,13 +454,18 @@ class AuditorAgent:
         return sorted(unread)[:MAX_COVERAGE_FILES_LISTED]
 
     def _unread_required_files(self) -> list[str]:
-        """Required-reading files (workflows, container files, manifests, .gitignore)
-        that the agent has not opened yet, derived only from the file tree."""
-        return [
+        """Required-reading files (workflows, container files, manifests,
+        configuration files, .gitignore) the agent has not opened yet.
+
+        Derived only from the file tree and ordered so that the capped listing
+        shows repo-root files first, then workflow files.
+        """
+        unread = [
             path
             for path in self.toolbox.required_reading_files()
             if path not in self._files_read
         ]
+        return sorted(unread, key=_required_priority)
 
     def _required_reading_request(self) -> str | None:
         """Nudge the model to read every required file before it can finalise.

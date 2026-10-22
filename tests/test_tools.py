@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from repo import RepoTarget, Repository
@@ -287,3 +289,74 @@ def test_required_reading_files_come_from_the_tree(sample_repo):
     assert "Dockerfile" in required
     # Build files that are not container definitions are candidates, not required reading.
     assert "Makefile" not in required
+
+
+def test_configuration_shaped_names_are_config_candidates(tmp_path: Path):
+    root = tmp_path / "cfg"
+    (root / "settings").mkdir(parents=True)
+    (root / "local.cfg").write_text("[app]\ndebug = true\n", encoding="utf-8")
+    (root / "secrets.yml").write_text("password: hunter2fake\n", encoding="utf-8")
+    (root / "settings" / "application.properties").write_text(
+        "db.password=hunter2fake\n", encoding="utf-8"
+    )
+    repository = Repository(
+        target=RepoTarget(owner="acme", name="cfg"),
+        root=root.resolve(),
+        head_sha="",
+        branch="main",
+        commit_date="",
+    )
+
+    candidates = ToolBox(repository=repository).candidate_files()["configuration-like files"]
+
+    assert "local.cfg" in candidates
+    assert "secrets.yml" in candidates
+    assert "settings/application.properties" in candidates
+
+
+def test_example_tree_manifests_stay_candidates_but_are_not_required(tmp_path: Path):
+    root = tmp_path / "ex"
+    (root / "examples" / "demo").mkdir(parents=True)
+    (root / "examples" / "demo" / "requirements.txt").write_text(
+        "flask\n", encoding="utf-8"
+    )
+    (root / "requirements.txt").write_text("requests\n", encoding="utf-8")
+    repository = Repository(
+        target=RepoTarget(owner="acme", name="ex"),
+        root=root.resolve(),
+        head_sha="",
+        branch="main",
+        commit_date="",
+    )
+    toolbox = ToolBox(repository=repository)
+
+    required = toolbox.required_reading_files()
+    candidates = toolbox.candidate_files()
+
+    # The example tree must not consume required-reading budget...
+    assert "examples/demo/requirements.txt" not in required
+    assert "requirements.txt" in required
+    # ...but it stays a candidate the model may still choose to open.
+    assert "examples/demo/requirements.txt" in candidates["dependency manifests"]
+
+
+def test_source_files_named_after_settings_are_not_required_reading(tmp_path: Path):
+    root = tmp_path / "code"
+    root.mkdir()
+    (root / "settings.py").write_text("DEBUG = True\n", encoding="utf-8")
+    (root / "local.cfg").write_text("[app]\ndebug = true\n", encoding="utf-8")
+    repository = Repository(
+        target=RepoTarget(owner="acme", name="code"),
+        root=root.resolve(),
+        head_sha="",
+        branch="main",
+        commit_date="",
+    )
+    toolbox = ToolBox(repository=repository)
+
+    required = toolbox.required_reading_files()
+    candidates = toolbox.candidate_files()["configuration-like files"]
+
+    assert "settings.py" not in required  # source code, not a config file
+    assert "local.cfg" in required
+    assert "settings.py" in candidates  # still worth a look as a candidate

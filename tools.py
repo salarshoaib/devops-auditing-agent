@@ -40,7 +40,70 @@ ENV_LIKE = re.compile(r"(^|/)\.env(\.[^/]+)?$")
 NON_PRODUCT_DIR = re.compile(
     r"(^|/)(docs?|tests?|spec|specs|examples?|samples?|fixtures?|vendor|node_modules|third_party)/"
 )
-CONFIG_EXTENSIONS = (".ini", ".cfg", ".conf")
+# File-name stems that mark a configuration file by themselves.
+CONFIG_STEMS = frozenset(
+    {
+        "local",
+        "secrets",
+        "secret",
+        "credentials",
+        "credential",
+        "config",
+        "configs",
+        "configuration",
+        "conf",
+        "settings",
+        "options",
+        "preferences",
+        "props",
+        "properties",
+        "env",
+        "dotenv",
+    }
+)
+CONFIG_EXTENSIONS = (
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".toml",
+    ".properties",
+    ".plist",
+    ".yaml",
+    ".yml",
+)
+# Source files are never required reading, even when their name looks like
+# configuration: a module named after a setting is code, not a config file.
+CODE_EXTENSIONS = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".rb",
+    ".php",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".swift",
+    ".scala",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".ps1",
+    ".lua",
+    ".ex",
+    ".exs",
+    ".r",
+    ".jl",
+)
 MAX_OVERVIEW_CANDIDATES = 15
 CONTAINER_FILE = re.compile(
     r"(^|/)(Dockerfile[^/]*|Containerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml|Makefile)$",
@@ -51,6 +114,40 @@ REQUIRED_CONTAINER = re.compile(
     r"(^|/)(Dockerfile[^/]*|Containerfile[^/]*)$", re.IGNORECASE
 )
 GITIGNORE_FILE = re.compile(r"(^|/)\.gitignore$")
+
+
+def _file_name(relative: str) -> str:
+    return relative.replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+def is_config_path(relative: str) -> bool:
+    """Return True for configuration-like files, from the path shape only.
+
+    Matches configuration directories and stems (config, settings, ...), env
+    files, and the common configuration extensions. Workflow and other
+    repository-metadata files under ``.github/`` are their own groups, so they
+    are never double-counted as configuration.
+    """
+    if CONFIG_LIKE.search(relative) or ENV_LIKE.search(relative):
+        return True
+    lowered = relative.replace("\\", "/").lower()
+    if lowered.startswith(".github/"):
+        return False
+    name = _file_name(relative)
+    if name.split(".", 1)[0] in CONFIG_STEMS:
+        return True
+    return name.endswith(CONFIG_EXTENSIONS)
+
+
+def is_required_config(relative: str) -> bool:
+    """Return True for configuration files that a complete audit must read.
+
+    Source code is excluded: a module that happens to be named after a setting
+    is code, not a configuration file.
+    """
+    if CODE_EXTENSIONS and _file_name(relative).endswith(CODE_EXTENSIONS):
+        return False
+    return is_config_path(relative)
 
 INVALID_PATTERN_HINT = (
     "Fix the pattern and retry: escape literal backslashes as \\\\, close character "
@@ -363,11 +460,7 @@ class ToolBox:
                 candidates["build and container files"].append(relative)
             elif DEPENDENCY_MANIFEST.search(relative):
                 candidates["dependency manifests"].append(relative)
-            elif not NON_PRODUCT_DIR.search(relative) and (
-                CONFIG_LIKE.search(relative)
-                or relative.endswith(CONFIG_EXTENSIONS)
-                or ENV_LIKE.search(relative)
-            ):
+            elif not NON_PRODUCT_DIR.search(relative) and is_config_path(relative):
                 candidates["configuration-like files"].append(relative)
         return {label: sorted(paths) for label, paths in candidates.items()}
 
@@ -376,16 +469,22 @@ class ToolBox:
         """Every file a complete audit must open, derived only from the tree.
 
         This is the reading set, never a findings list: each file still has to be
-        read and judged, and a clean file produces no violation.
+        read and judged, and a clean file produces no violation. Vendored,
+        example, sample, documentation and fixture trees stay candidates but are
+        never required reading, so a repository with many example projects cannot
+        exhaust the step budget on required reading alone.
         """
         required: list[str] = []
         for path in iter_repo_files(self.repository.root):
             relative = self.repository.relative(path)
+            if NON_PRODUCT_DIR.search(relative):
+                continue
             if (
                 WORKFLOW_FILE.match(relative)
                 or REQUIRED_CONTAINER.search(relative)
                 or DEPENDENCY_MANIFEST.search(relative)
                 or GITIGNORE_FILE.search(relative)
+                or is_required_config(relative)
             ):
                 required.append(relative)
         return sorted(set(required))

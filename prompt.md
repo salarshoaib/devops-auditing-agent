@@ -67,6 +67,13 @@ produces no violation:
   Check for unpinned, wildcard or unbounded versions only where the ecosystem
   normally expects exact pins or a lockfile (an application, not a published
   library); declared bounded ranges and lockfile-backed setups are acceptable.
+- Every configuration file. Cover configuration-shaped names (`local`, `secrets`,
+  `secret`, `credentials`) and the common configuration extensions (`*.ini`,
+  `*.cfg`, `*.conf`, `*.toml`, `*.properties`, and `*.yaml`/`*.yml` outside
+  `.github/`), wherever they sit in the tree. Check for debug or verbose mode left
+  on in production or deployment configuration (CFG-004), configuration hardcoded
+  without environment separation (CFG-003), and credentials embedded in URLs or
+  connection strings (SEC-010).
 - `.gitignore` compared with the tracked files from `list_files`. A tracked env
   file (SEC-002), IDE settings (CFG-002), local configuration or generated build
   output (HYG-003) is a defect, and a `.gitignore` that does not cover it is

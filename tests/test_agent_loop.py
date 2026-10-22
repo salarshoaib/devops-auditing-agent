@@ -4,6 +4,7 @@ import json
 
 from agent_loop import AuditorAgent
 from llm import AssistantTurn
+from repo import RepoTarget, Repository
 from tools import ToolBox
 
 
@@ -259,6 +260,66 @@ def test_completeness_nudge_is_skipped_after_the_deadline(sample_repo):
     agent._started = 0.0  # the wall-clock budget is long spent
     assert agent._unread_required_files()
     assert agent._coverage_review_request() is None
+
+
+def test_completeness_nudge_lists_at_most_ten_files(tmp_path):
+    root = tmp_path / "many"
+    (root / ".github" / "workflows").mkdir(parents=True)
+    (root / "sub").mkdir()
+    (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    (root / "requirements.txt").write_text("flask\n", encoding="utf-8")
+    (root / ".github" / "workflows" / "ci.yml").write_text(
+        "on: push\njobs: {}\n", encoding="utf-8"
+    )
+    for index in range(12):
+        (root / "sub" / f"config-{index}.toml").write_text("[app]\n", encoding="utf-8")
+    repository = Repository(
+        target=RepoTarget(owner="acme", name="many"),
+        root=root.resolve(),
+        head_sha="",
+        branch="main",
+        commit_date="",
+    )
+    agent = _agent(repository, [])
+
+    unread = agent._unread_required_files()
+    assert len(unread) > 10  # more required files than the listing cap
+
+    request = agent._required_reading_request()
+    assert request
+    listing = request.split("read these files in full: ", 1)[1].split(". They exist", 1)[0]
+    listed = [item.strip() for item in listing.split(",") if item.strip()]
+
+    assert len(listed) == 10
+    # Repo-root files come first, then workflow files, then everything else.
+    assert listed[0] == ".gitignore"
+    assert listed[1] == "requirements.txt"
+    assert listed[2] == ".github/workflows/ci.yml"
+    listed_sub = [item for item in listed if item.startswith("sub/")]
+    assert all(item.startswith("sub/") for item in listed[3:])
+    assert len(listed_sub) == 7  # only part of the sub-directory tail is shown
+    assert len(listed_sub) < len([u for u in unread if u.startswith("sub/")])
+
+
+def test_no_completeness_nudge_after_the_deadline(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    agent.time_limit = 1e-6  # the budget is spent before the first step
+    result = agent.run()
+
+    assert result.submitted is True
+    tool_messages = [
+        message.get("content", "")
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool"
+    ]
+    assert not any("read these files in full" in text for text in tool_messages)
 
 
 def test_agent_nudges_workflow_review_before_accepting(sample_repo):
