@@ -10,7 +10,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from llm import AssistantTurn, LLMClient, extract_json_object, parse_text_tool_call
+from llm import (
+    AssistantTurn,
+    DeadlineExceeded,
+    LLMClient,
+    extract_json_object,
+    parse_text_tool_call,
+)
 from prompts import (
     FINALIZE_PROMPT,
     NUDGE_PROMPT,
@@ -31,6 +37,9 @@ MAX_WORKFLOW_NUDGES = 1
 MAX_WORKFLOW_FILES_LISTED = 15
 MAX_COVERAGE_NUDGES = 1
 MAX_COVERAGE_FILES_LISTED = 12
+# Finalisation gets a tighter retry budget than investigation so total runtime
+# stays close to the wall-clock limit even when the provider is unavailable.
+FINALISE_RETRIES = 1
 
 _WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
 
@@ -112,6 +121,10 @@ class AuditorAgent:
     # -- public ----------------------------------------------------------
     def run(self) -> AuditResult:
         started = time.time()
+        if self.time_limit > 0:
+            setter = getattr(self.llm, "set_deadline", None)
+            if callable(setter):
+                setter(started + self.time_limit)
         overview = self.toolbox.overview()
         self._messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -139,7 +152,15 @@ class AuditorAgent:
                     "so far."
                 )
                 break
-            turn = self._chat()
+            try:
+                turn = self._chat()
+            except DeadlineExceeded as exc:
+                self._log(f"Stopping provider retries: {exc}")
+                self.notes.append(
+                    "Stopped retrying an unavailable provider at the wall-clock "
+                    "limit; the report covers the evidence gathered so far."
+                )
+                break
             if not turn:
                 break
             self._messages.append(turn.raw_message)
@@ -201,7 +222,7 @@ class AuditorAgent:
     def _forced_text_fallback(self) -> AssistantTurn | None:
         self.steps += 1
         self._messages.append({"role": "user", "content": FINALIZE_PROMPT})
-        turn = self.llm.chat(self._messages, tools=None)
+        turn = self.llm.chat(self._messages, tools=None, retries=FINALISE_RETRIES)
         self._messages.append(turn.raw_message)
         return turn
 
@@ -478,11 +499,18 @@ class AuditorAgent:
             self.notes,
         )
         try:
-            turn = self.llm.chat(self._messages, tools=self._schemas, force_tool="submit_report")
+            turn = self.llm.chat(
+                self._messages,
+                tools=self._schemas,
+                force_tool="submit_report",
+                retries=FINALISE_RETRIES,
+            )
         except Exception as exc:
             self._log(f"Forced finalisation failed ({exc}); retrying as plain JSON.")
             try:
-                turn = self.llm.chat(self._messages, tools=None)
+                turn = self.llm.chat(
+                    self._messages, tools=None, retries=FINALISE_RETRIES
+                )
             except Exception as second:  # pragma: no cover - defensive
                 self.notes.append(f"Finalisation failed: {second}")
                 return empty_report, False

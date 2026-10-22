@@ -36,8 +36,17 @@ class ScriptedLLM:
         self.calls = []
         self.forced = []
 
-    def chat(self, messages, tools=None, force_tool=None, temperature=0.0):
-        self.calls.append({"messages": list(messages), "force_tool": force_tool})
+    def chat(
+        self,
+        messages,
+        tools=None,
+        force_tool=None,
+        temperature=0.0,
+        retries=None,
+    ):
+        self.calls.append(
+            {"messages": list(messages), "force_tool": force_tool, "retries": retries}
+        )
         self.forced.append(force_tool)
         if not self.turns:
             return _text_turn("out of turns")

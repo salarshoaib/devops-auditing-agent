@@ -30,6 +30,14 @@ class LLMError(RuntimeError):
     """Fatal LLM failure (auth, quota, unreachable endpoint)."""
 
 
+class DeadlineExceeded(LLMError):
+    """The wall-clock deadline is closer than the next retry sleep.
+
+    Raised instead of sleeping, so callers stop retrying immediately and
+    finalise with whatever evidence they already have.
+    """
+
+
 @dataclass
 class AssistantTurn:
     content: str
@@ -61,6 +69,8 @@ class LLMClient:
         if not api_key:
             raise LLMError("No API key configured. Set LLM_API_KEY in .env.")
         self.model = model
+        # Absolute wall-clock timestamp; None disables the deadline check.
+        self.deadline: float | None = None
         self._client = OpenAI(
             api_key=api_key,
             base_url=base_url or None,
@@ -68,14 +78,26 @@ class LLMClient:
             max_retries=max_retries,
         )
 
-    def _create_with_retries(self, kwargs: dict[str, Any]):
+    def set_deadline(self, deadline: float | None) -> None:
+        """Refuse retry sleeps that would run past *deadline* (see DeadlineExceeded)."""
+        self.deadline = deadline
+
+    def _create_with_retries(self, kwargs: dict[str, Any], retries: int | None = None):
+        delays = RETRY_DELAYS if retries is None else tuple(RETRY_DELAYS[: max(0, retries)])
         last_error: Exception | None = None
-        for attempt in range(len(RETRY_DELAYS) + 1):
+        for attempt in range(len(delays) + 1):
             if attempt:
-                wait = _retry_after(last_error, RETRY_DELAYS[attempt - 1])
+                wait = _retry_after(last_error, delays[attempt - 1])
+                if self.deadline is not None:
+                    remaining = self.deadline - time.time()
+                    if remaining < wait:
+                        raise DeadlineExceeded(
+                            f"only {max(remaining, 0.0):.0f}s left before the wall-clock "
+                            f"limit; skipping a {wait:.0f}s retry sleep and finalising now"
+                        )
                 print(
                     f"  (provider unavailable - retrying in {wait:.0f}s, "
-                    f"attempt {attempt + 1}/{len(RETRY_DELAYS) + 1})",
+                    f"attempt {attempt + 1}/{len(delays) + 1})",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -92,6 +114,7 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         force_tool: str | None = None,
         temperature: float = 0.0,
+        retries: int | None = None,
     ) -> AssistantTurn:
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -109,7 +132,9 @@ class LLMClient:
                 kwargs["tool_choice"] = "auto"
 
         try:
-            response = self._create_with_retries(kwargs)
+            response = self._create_with_retries(kwargs, retries)
+        except DeadlineExceeded:
+            raise  # deadline reached: caller finalises with proven evidence
         except APITimeoutError as exc:
             raise LLMError(f"LLM request timed out after {DEFAULT_TIMEOUT:.0f}s.") from exc
         except APIConnectionError as exc:
