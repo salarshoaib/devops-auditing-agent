@@ -23,6 +23,66 @@ class RepoError(RuntimeError):
     """Raised when a repository cannot be validated or cloned."""
 
 
+# Common git failure signatures mapped to a plain-language cause.
+_GIT_CAUSES: tuple[tuple[str, str], ...] = (
+    ("repository not found", "the repository does not exist, or it is private"),
+    ("could not read from remote repository", "the repository is private or needs authentication"),
+    ("could not read username", "the repository is private or needs authentication"),
+    ("authentication failed", "the repository is private or needs authentication"),
+    ("permission denied", "the repository is private or needs authentication"),
+    ("empty repository", "the repository has no commits"),
+    ("not a git repository", "the URL does not point at a git repository"),
+    ("could not resolve host", "the host name could not be resolved"),
+    ("connection refused", "the connection was refused"),
+    ("network is unreachable", "the network is unreachable"),
+    ("failed to connect", "the connection failed"),
+    ("operation timed out", "the operation timed out"),
+    ("early eof", "the remote closed the connection early"),
+    ("remote end hung up unexpectedly", "the remote closed the connection unexpectedly"),
+)
+
+
+def first_git_error_line(stderr: str) -> str:
+    """Return the first meaningful line of git's stderr.
+
+    Usage output and blank lines are skipped so a failure is never reported as
+    git's help text.
+    """
+    for line in (stderr or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.lower().startswith("usage:"):
+            continue
+        if stripped:
+            return stripped
+    return ""
+
+
+def git_failure_cause(stderr: str) -> str:
+    """Return a plain-language cause for a git failure."""
+    lowered = (stderr or "").lower()
+    for needle, cause in _GIT_CAUSES:
+        if needle in lowered:
+            return cause
+    return "git could not complete the operation"
+
+
+def git_failure_message(command: str, stderr: str, url: str | None = None) -> str:
+    """Build the message used for every git failure.
+
+    The message always names the repository, the likely cause and the first
+    line of git's own error output - never git's usage text.
+    """
+    detail = first_git_error_line(stderr)
+    cause = git_failure_cause(stderr)
+    where = f" for {url}" if url else ""
+    parts = [f"git {command} failed{where}: {cause}"]
+    if detail:
+        parts.append(f"git said: {detail}")
+    return ". ".join(parts)
+
+
 _GITHUB_HTTPS = re.compile(
     r"^https?://(?:www\.)?github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$"
 )
@@ -64,7 +124,7 @@ def parse_repo_url(value: str) -> RepoTarget:
     )
 
 
-def _run_git(args: list[str], cwd: Path | None = None) -> str:
+def _run_git(args: list[str], cwd: Path | None = None, url: str | None = None) -> str:
     env = {
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_ASKPASS": "",
@@ -92,11 +152,10 @@ def _run_git(args: list[str], cwd: Path | None = None) -> str:
             f"git {args[0]} exceeded the {CLONE_TIMEOUT_SECONDS}s timeout."
         ) from exc
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
-        message = detail[-1] if detail else "unknown git error"
+        stderr = completed.stderr or completed.stdout or ""
         # Never echo credential-bearing URLs back to the caller.
-        message = re.sub(r"https?://[^@\s]+@", "https://<redacted>@", message)
-        raise RepoError(f"git {args[0]} failed: {message}")
+        stderr = re.sub(r"https?://[^@\s]+@", "https://<redacted>@", stderr)
+        raise RepoError(git_failure_message(args[0], stderr, url))
     return completed.stdout
 
 
@@ -154,16 +213,22 @@ def clone_repository(value: str, depth: int = CLONE_DEPTH) -> Repository:
                 "--quiet",
                 target.https_url,
                 str(destination),
-            ]
+            ],
+            url=target.https_url,
         )
         if not (destination / ".git").exists():
-            raise RepoError("Clone completed but the working tree is missing.")
-        head_sha = _run_git(["rev-parse", "HEAD"], cwd=destination).strip()
+            raise RepoError(
+                f"git clone failed for {target.https_url}: the clone produced no "
+                "working tree. The repository may be empty or unreachable."
+            )
+        head_sha = _run_git(
+            ["rev-parse", "HEAD"], cwd=destination, url=target.https_url
+        ).strip()
         branch = _run_git(
-            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=destination
+            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=destination, url=target.https_url
         ).strip()
         commit_date = _run_git(
-            ["log", "-1", "--format=%cI"], cwd=destination
+            ["log", "-1", "--format=%cI"], cwd=destination, url=target.https_url
         ).strip()
     except Exception:
         tmpdir.cleanup()
