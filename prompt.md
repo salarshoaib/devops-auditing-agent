@@ -50,7 +50,7 @@ fit any rule id, use "GEN-001" with the closest category and explain it.
   hide failures are CI-003; `pull_request_target` with a PR-head checkout is SEC-004.
   A script that force-pushes to the default branch or deploys without a gate is BLD-002.
 - Read dependency manifests line by line. For an application whose
-  `requirements.txt` lists entries without exact pins (`Flask`, `requests>=2`),
+  `requirements.txt` lists entries without exact pins (bare names, or ranges like `>=2.0`),
   report DEP-002 once per manifest, naming the offending entries, plus DEP-001 when
   no lockfile is committed and the manifest itself does not pin exact versions.
   Libraries that publish to PyPI and declare bounded

@@ -62,7 +62,7 @@ agent.py                 CLI: argument parsing, .env, orchestration, exit codes
   |
   +-- rules.py           rule catalog (ids, categories, severities, remediation)
   +-- reporting.py       schema normalisation, dedupe, severity policy, JSON write
-  +-- secrets.py         credential redaction
+  +-- redaction.py       credential redaction (never echoes a credential)
 ```
 
 The loop in `agent_loop.AuditorAgent.run`:
@@ -75,6 +75,8 @@ overview --> [ LLM turn ] --tool_call--> execute --> append result --> repeat
                  +--no tool call---> nudge / repair prompt (max 2)
                  +--budget reached--> forced submit_report with current evidence
 ```
+
+Manifest signals in the overview only tell the model which files exist so it knows what to inspect. They are not findings; every violation still requires the model to read the evidence.
 
 ## Requirements
 
@@ -332,6 +334,33 @@ The mature repositories all produce zero findings, which is the main guard again
 false positives on healthy evaluation repos. The seeded fixture exercises the recall
 side; its report is committed as `sample_report.json`.
 
+## Evaluating recall
+
+`scripts/inject_defects.py` builds a throw-away copy of a public repository
+(`encode/httpx`) with a fresh two-commit history and a known set of seeded
+defects: a `pull_request_target` workflow that checks out the PR head with
+`write-all` permissions, a masked test gate, fake credentials in
+`app/settings_local.py`, hardcoded machine paths, a committed `.env`, and tracked
+build artifacts. It never pushes; it prints the exact commands to publish the
+fixture under your own account.
+
+`scripts/truth.json` lists the seeded defects (`file` plus matching `keywords`),
+and `scripts/score.py` scores a report against it:
+
+```powershell
+python scripts/score.py report.json
+# Recall 8/8
+# Precision 8/9
+# MISSED ...
+# EXTRA ...
+```
+
+A finding counts as a match when its file path contains (or is contained in) the
+expected path and any keyword appears in its description or evidence. Recall is
+the fraction of seeded defects that were found; precision is the fraction of
+reported findings that matched a seeded defect. The agent only audits public
+GitHub URLs, so publishing the prepared clone is a manual step.
+
 ## Design decisions
 
 - **Clone instead of the GitHub API** - `git_log()` and file reads work on any public
@@ -345,6 +374,13 @@ side; its report is committed as `sample_report.json`.
   healthy-repository evaluation.
 - **Prompts define policy, code defines guardrails** - the model decides *what* is a
   violation; the code enforces schema, severity floors, redaction, and safety.
+
+## Tested models
+
+| Model | Provider | Result |
+| --- | --- | --- |
+| `gemini-3.5-flash-lite` | Google, OpenAI-compatible endpoint | Tested: 15 findings on the seeded fixture, 0 on mature repositories |
+| other OpenAI-compatible models | Any compatible API | Not yet tested |
 
 ## Limitations
 
@@ -368,7 +404,7 @@ tools.py            inspection tools + submit_report schema
 repo.py             clone + path safety
 rules.py            rule catalog
 reporting.py        validation, dedupe, severity policy, JSON writer
-secrets.py          secret redaction
+redaction.py          secret redaction
 requirements.txt    runtime/test dependencies
 .env.example        configuration template
 tests/              80 automated tests
