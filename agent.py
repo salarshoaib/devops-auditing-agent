@@ -58,6 +58,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=None, help="Override LLM_MODEL.")
     parser.add_argument("--base-url", default=None, help="Override LLM_BASE_URL.")
     parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=None,
+        help=(
+            "Total wall-clock limit in seconds before the agent submits what it "
+            "has (default: AGENT_TIME_LIMIT_SECONDS from .env, or 600)."
+        ),
+    )
+    parser.add_argument(
         "--trace",
         default=None,
         help="Optional path for a JSON trace of the tool-call sequence.",
@@ -126,6 +135,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_steps=max_steps,
                 verbose=args.verbose,
                 log=lambda message: _emit(message, args.quiet),
+                time_limit=args.time_limit,
             )
             result = agent.run()
             destination = write_report(args.output, result.report)

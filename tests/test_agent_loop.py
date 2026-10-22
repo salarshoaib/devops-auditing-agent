@@ -308,6 +308,61 @@ def test_coverage_nudge_caps_candidate_list(sample_repo):
     assert len(agent._unread_candidates()) == 12
 
 
+def test_coverage_nudge_asks_for_git_log_when_history_not_seen(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    nudge = [
+        message["content"]
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool" and "git_log" in message.get("content", "")
+    ][-1]
+    assert "Call `git_log` once" in nudge
+    assert "limit" in nudge
+    assert "30" in nudge
+
+
+def test_coverage_nudge_omits_git_log_after_history_was_read(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [
+            _tool_turn("git_log", {"limit": 5}, call_id="g1"),
+            _tool_turn("read_file", {"path": "config.py"}, call_id="r1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-1"),
+            _tool_turn("submit_report", {"violations": []}, call_id="submit-2"),
+        ],
+    )
+    result = agent.run()
+    assert result.submitted is True
+    nudges = [
+        message["content"]
+        for call in agent.llm.calls
+        for message in call["messages"]
+        if message.get("role") == "tool" and "not findings" in message.get("content", "")
+    ]
+    assert nudges
+    assert "git_log" not in nudges[-1]
+
+
+def test_wall_clock_limit_finalises_with_partial_report(sample_repo):
+    agent = _agent(
+        sample_repo,
+        [_tool_turn("submit_report", {"violations": []}, call_id="submit-final")],
+        max_steps=10,
+    )
+    agent.time_limit = 1e-9
+    result = agent.run()
+    assert any("Wall-clock limit" in note for note in result.notes)
+
+
 def test_workflow_nudge_caps_the_file_list(sample_repo):
     agent = _agent(sample_repo, [])
     agent._workflow_files_read = {

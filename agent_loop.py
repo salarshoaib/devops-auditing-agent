@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -23,6 +24,8 @@ from tools import ToolBox, is_submission_tool, tool_schemas
 MAX_TOOL_CALLS_PER_STEP = 8
 MAX_TOOL_OUTPUT_CHARS = 24000
 MAX_STEPS_HARD_LIMIT = 80
+MAX_RUNTIME_SECONDS = 600.0
+RUNTIME_LIMIT_ENV = "AGENT_TIME_LIMIT_SECONDS"
 MAX_EVIDENCE_REPAIRS = 1
 MAX_WORKFLOW_NUDGES = 1
 MAX_WORKFLOW_FILES_LISTED = 15
@@ -54,10 +57,18 @@ WORKFLOW_REVIEW_PROMPT = (
 COVERAGE_REVIEW_PROMPT = (
     "Before submitting, open the relevant files you have not read yet: {files}. "
     "They are candidates detected from the file tree, not findings: dependency "
-    "manifests (including secondary dev/test manifests), configuration files, and "
-    "committed editor/IDE settings. Read the ones that matter for this repository "
-    "and report any defects you find, each as its own violation. Ignore the rest; "
-    "if none are relevant, call submit_report again with the same report."
+    "manifests (including secondary dev/test manifests), configuration files, "
+    "committed editor/IDE settings, and build or container files. Read the ones "
+    "that matter for this repository and report any defects you find, each as its "
+    "own violation. Ignore the rest; if none are relevant, call submit_report "
+    "again with the same report."
+)
+
+GIT_LOG_REVIEW_PROMPT = (
+    "You have not inspected the repository history. Call `git_log` once with a limit "
+    "of 30 to review the most recent commits and look for committed-then-removed "
+    "secrets, tracked generated files, and suspicious history. If the history is "
+    "empty or unavailable, note that and continue."
 )
 
 
@@ -78,10 +89,12 @@ class AuditorAgent:
         max_steps: int = 30,
         verbose: bool = False,
         log: Callable[[str], None] | None = None,
+        time_limit: float | None = None,
     ) -> None:
         self.toolbox = toolbox
         self.llm = llm
         self.max_steps = max(3, min(int(max_steps or 30), MAX_STEPS_HARD_LIMIT))
+        self.time_limit = _resolve_time_limit(time_limit)
         self.verbose = verbose
         self._log = log or (lambda message: print(message, file=sys.stderr))
         self.steps = 0
@@ -92,6 +105,7 @@ class AuditorAgent:
         self.coverage_nudges = 0
         self._workflow_files_read: set[str] = set()
         self._files_read: set[str] = set()
+        self._git_log_called = False
         self._messages: list[dict[str, Any]] = []
         self._schemas = tool_schemas()
 
@@ -114,6 +128,17 @@ class AuditorAgent:
 
         repairs = 0
         while self.steps < self.max_steps:
+            if self._time_expired(started):
+                self._log(
+                    f"Wall-clock limit of {self.time_limit:.0f}s reached; "
+                    "submitting what has been proven."
+                )
+                self.notes.append(
+                    f"Wall-clock limit of {self.time_limit:.0f}s reached before the "
+                    "investigation finished; the report covers the evidence gathered "
+                    "so far."
+                )
+                break
             turn = self._chat()
             if not turn:
                 break
@@ -147,6 +172,12 @@ class AuditorAgent:
 
         report, submitted = self._finalise()
         return self._finish(report, submitted=submitted, started=started)
+
+    def _time_expired(self, started: float) -> bool:
+        """True when the total wall-clock budget is used up."""
+        if self.time_limit <= 0:
+            return False
+        return (time.time() - started) >= self.time_limit
 
     # -- internals -------------------------------------------------------
     def _chat(self, force_tool: str | None = None) -> AssistantTurn | None:
@@ -239,18 +270,15 @@ class AuditorAgent:
                         }
                     )
                     continue
-                candidates = self._unread_candidates()
-                if candidates and self.coverage_nudges < MAX_COVERAGE_NUDGES:
+                coverage_request = self._coverage_review_request()
+                if coverage_request:
                     self.coverage_nudges += 1
                     self.trace.append(
                         {
                             "step": self.steps,
                             "tool": "submit_report",
                             "arguments": {"violations": "rejected (coverage review)"},
-                            "result_preview": (
-                                "rejected: coverage review for "
-                                f"{len(candidates)} unread candidate file(s)"
-                            ),
+                            "result_preview": "rejected: coverage review nudge",
                             "error": True,
                         }
                     )
@@ -259,9 +287,7 @@ class AuditorAgent:
                             "role": "tool",
                             "tool_call_id": call.get("id") or "submit",
                             "name": name,
-                            "content": COVERAGE_REVIEW_PROMPT.format(
-                                files=", ".join(candidates)
-                            ),
+                            "content": coverage_request,
                         }
                     )
                     continue
@@ -303,6 +329,8 @@ class AuditorAgent:
             else:
                 if name == "read_file":
                     self._note_workflow_read(arguments.get("path"))
+                if name == "git_log":
+                    self._git_log_called = True
                 output = self.toolbox.execute(name, arguments, step=self.steps)
                 if name == "read_file" and not output.startswith("ERROR"):
                     self._files_read.add(_normalise_repo_path(arguments.get("path")))
@@ -378,6 +406,28 @@ class AuditorAgent:
         for paths in self.toolbox.candidate_files().values():
             unread.update(path for path in paths if path not in self._files_read)
         return sorted(unread)[:MAX_COVERAGE_FILES_LISTED]
+
+    def _coverage_review_request(self) -> str | None:
+        """Build the pre-submit coverage nudge, or ``None`` when it is not needed.
+
+        The nudge asks for the unread candidate files and, when the history was
+        never inspected, for a single ``git_log`` call. It is advisory only: it
+        never creates a finding and the model may resubmit the same report.
+        """
+        if self.coverage_nudges >= MAX_COVERAGE_NUDGES:
+            return None
+        candidates = self._unread_candidates()
+        needs_history = not self._git_log_called
+        if not candidates and not needs_history:
+            return None
+        parts = []
+        if candidates:
+            parts.append(
+                COVERAGE_REVIEW_PROMPT.format(files=", ".join(candidates)).strip()
+            )
+        if needs_history:
+            parts.append(GIT_LOG_REVIEW_PROMPT.strip())
+        return " ".join(parts)
 
     def _build_submitted_report(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
         violations = self._raw_violation_items(arguments)
@@ -477,6 +527,22 @@ class AuditorAgent:
             notes=list(self.notes),
             trace=list(self.trace),
         )
+
+
+def _resolve_time_limit(value: float | None) -> float:
+    """Resolve the wall-clock limit: explicit value, then env var, then default."""
+    if value is not None:
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return MAX_RUNTIME_SECONDS
+    raw = (os.getenv(RUNTIME_LIMIT_ENV) or "").strip()
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return MAX_RUNTIME_SECONDS
+    return MAX_RUNTIME_SECONDS
 
 
 def _preview(text: str, limit: int) -> str:
